@@ -1,1 +1,325 @@
-{"repository_full_name":"haytamxp/orchid-island-soc-siem","path":"README.md","content":"# Orchid Island SOC/SIEM\n\nIntelligent SOC/SIEM platform for Orchid Island Real Estate.\n\n## Project objectives\n\n- Finalize the existing Wazuh + Suricata + Flask + MySQL + React/TypeScript platform.\n- Connect the dashboard to the backend and expose security monitoring through the company website.\n- Integrate XGBoost risk scoring, RAG/Ollama reporting, VirusTotal enrichment, Telegram/Email notifications, and automated IP response.\n- Develop a behavioral analysis module that assigns a risk score to users/sessions and triggers an alert or controlled blocking action.\n\n## Architecture\n\n```text\nWazuh / Suricata\n       |\n       v\n   Agents/API\n       |\n       v\n Flask Backend <---- React/TypeScript Dashboard\n       |\n       +---- MySQL\n       +---- XGBoost Risk Scoring\n       +---- Behavioral ML\n       +---- RAG / Ollama\n       +---- VirusTotal\n       +---- Telegram / Email\n       +---- IPTables Response\n       |\n       v\n Cloudflare / Orchid Island Website\n```\n\n## Technology stack\n\n| Layer | Technology |\n|---|---|\n| Host telemetry | Wazuh |\n| Network telemetry | Suricata |\n| Search / observability | OpenSearch |\n| Backend | Python / Flask |\n| Database | MySQL |\n| Frontend | React / TypeScript / Vite |\n| Risk scoring | XGBoost |\n| Behavioral analysis | Machine Learning / anomaly detection |\n| LLM | Ollama / Llama 3.2 |\n| Threat intelligence | VirusTotal |\n| Notifications | Telegram / Email |\n| Automated response | IPTables |\n| Infrastructure | Ubuntu Linux / Cloudflare |\n\n## Delivery plan\n\n- **Phase 0 — Takeover & audit:** 24–29 Aug 2026\n- **Phase 1 — Platform finalization:** 30 Aug–10 Sep 2026\n- **Phase 2 — Behavioral AI:** 11–18 Sep 2026\n- **Final validation & delivery:** 19–20 Sep 2026\n\n## Repository structure\n\n```text\nbackend/        Flask REST API\nfrontend/       React + TypeScript dashboard\nagents/         Wazuh and Suricata collectors\nai/             XGBoost, behavioral ML, RAG and Ollama\nresponse/       IPTables and notification mechanisms\nintegrations/   Cloudflare, VirusTotal and telemetry integrations\ndatabase/       Schema, migrations and seeds\ndocs/           Architecture, deployment, security and project documentation\ntests/          Unit and integration tests\nscripts/        Operational and development scripts\n.github/        CI/CD workflows\n```\n\n## Security\n\nNever commit secrets, API tokens, passwords, private keys, production logs, or real behavioral datasets. Use `.env.example` as the configuration template.\n\n## Status\n\n**Initial skeleton — project takeover in progress.**\n","message":"docs: initialize project README","sha":"984f10b780f3ee3552cd5b13d67169e4765d2e0f","branch":"main"}# orchid-island-soc-siem
+# Orchid Island SOC/SIEM
+
+## Intelligent Security Monitoring, Detection and Behavioral Analysis Platform
+
+> **Project:** Orchid Island Real Estate
+> **Client:** Orchid Island Real Estate — Direction Générale
+> **Technical team:** Nezha Halla & Hytham
+> **Delivery target:** 20 September 2026
+> **Current phase:** Project takeover and technical audit
+
+---
+
+## 1. Project Overview
+
+Orchid Island SOC/SIEM is a cybersecurity platform designed to centralize security events, analyze them, generate risk assessments, notify the supervision team, and support automated security response.
+
+The project is a **continuation and finalization of an existing platform** developed by a previous team.
+
+The objective is not to rebuild the platform from scratch, but to:
+
+* audit the existing implementation;
+* recover and document the current architecture;
+* identify broken, incomplete, or disconnected components;
+* restore the end-to-end security event pipeline;
+* connect the React dashboard to the Flask backend;
+* integrate the platform with the company's web environment;
+* validate existing automated response mechanisms;
+* develop a behavioral analysis module;
+* document the final architecture, limitations, and operating procedures.
+
+---
+
+## 2. Project Objectives
+
+### Phase 1 — Finalization and Integration
+
+The first phase focuses on obtaining a functional end-to-end SOC/SIEM platform.
+
+Target flow:
+
+```text
+Security Sources
+      |
+      v
+Wazuh / Suricata
+      |
+      v
+Collectors / Agents
+      |
+      v
+Flask REST API
+      |
+      +--------------------+
+      |                    |
+      v                    v
+    MySQL              Risk Engine
+                          |
+                          v
+                    AI / RAG Analysis
+                          |
+                          v
+                 Reports / Alerts
+                          |
+              +-----------+-----------+
+              |                       |
+              v                       v
+       React Dashboard       Telegram / Email
+```
+
+Phase 1 objectives include:
+
+* dashboard ↔ backend API integration;
+* authentication validation;
+* event and alert visualization;
+* database and API flow validation;
+* Wazuh/Suricata ingestion validation;
+* risk scoring validation;
+* AI report generation validation;
+* notification validation;
+* integration with the company's web environment;
+* regression testing of existing security mechanisms.
+
+---
+
+## 3. Phase 2 — Behavioral Analysis
+
+The second phase introduces behavioral security analysis.
+
+The module will analyze relevant behavioral signals such as:
+
+* login time;
+* login frequency;
+* source IP;
+* access patterns;
+* authentication failures;
+* unusual activity;
+* deviations from historical user behavior.
+
+The system will calculate a behavioral risk score for a user or session.
+
+Conceptually:
+
+```text
+User / Session Activity
+          |
+          v
+Feature Extraction
+          |
+          v
+Behavioral Model
+          |
+          v
+Risk Score
+          |
+      +---+---+
+      |       |
+      v       v
+   Alert    Response
+             |
+       +-----+-----+
+       |           |
+       v           v
+    Telegram    IP/User Block
+```
+
+The final model and detection strategy will be selected after analysis of the available data and documented with its assumptions, advantages, limitations, and validation results.
+
+---
+
+## 4. Existing Technology Stack
+
+The project specification identifies the following technologies:
+
+| Component                | Technology                |
+| ------------------------ | ------------------------- |
+| Host monitoring          | Wazuh                     |
+| Network monitoring       | Suricata                  |
+| Search / observability   | OpenSearch                |
+| Backend                  | Python / Flask            |
+| Database                 | MySQL                     |
+| Frontend                 | React / TypeScript / Vite |
+| Risk scoring             | XGBoost                   |
+| LLM / RAG                | Ollama / Llama 3.2        |
+| Threat intelligence      | VirusTotal                |
+| Notifications            | Telegram / Email          |
+| Automated response       | IPTables                  |
+| External web environment | Cloudflare                |
+| Operating system         | Ubuntu Linux              |
+
+These technologies describe the **existing/project-target stack**. Their actual implementation status will be established during the takeover audit.
+
+---
+
+## 5. Repository Structure
+
+```text
+orchid-island-soc-siem/
+│
+├── backend/                    # Flask REST API
+├── frontend/                   # React / TypeScript dashboard
+├── agents/                     # Wazuh / Suricata collection agents
+│
+├── ai/                         # AI and machine-learning components
+│   ├── xgboost/
+│   ├── behavioral/
+│   ├── rag/
+│   └── ollama/
+│
+├── response/                   # Automated security response
+│   ├── iptables/
+│   ├── telegram/
+│   └── email/
+│
+├── integrations/               # External security integrations
+│   ├── cloudflare/
+│   ├── virustotal/
+│   └── wazuh/
+│
+├── database/                   # Database schema and migrations
+│   ├── schema/
+│   ├── migrations/
+│   └── seeds/
+│
+├── docs/                       # Technical and project documentation
+│   ├── architecture/
+│   ├── phase-1/
+│   ├── phase-2/
+│   ├── deployment/
+│   └── security/
+│
+├── tests/                      # Unit / integration / validation tests
+├── scripts/                    # Development and operational scripts
+│
+├── .github/                    # GitHub workflows and project automation
+│   └── workflows/
+│
+├── .env.example
+├── .gitignore
+├── SECURITY.md
+└── README.md
+```
+
+---
+
+## 6. Project Timeline
+
+| Milestone | Period         | Objective                                       |
+| --------- | -------------- | ----------------------------------------------- |
+| M0        | 24–29 Aug 2026 | Takeover, audit and environment discovery       |
+| M1        | 30 Aug–5 Sep   | Dashboard ↔ backend integration                 |
+| M2        | 6–10 Sep       | Website / Cloudflare integration and validation |
+| M3        | 11–16 Sep      | Behavioral AI module                            |
+| M4        | 17–18 Sep      | Automated response integration                  |
+| M5        | 19–20 Sep      | Final tests, documentation and delivery         |
+
+---
+
+## 7. Acceptance Criteria
+
+The project is considered functionally complete when:
+
+* the dashboard receives real backend data;
+* events and alerts can be visualized;
+* the main ingestion pipeline works end to end;
+* critical alerts trigger the expected notification mechanism;
+* the behavioral module detects the agreed test scenarios;
+* the required automated response is executed safely;
+* existing functionality does not regress;
+* technical documentation is complete;
+* the final demonstration is validated by the client.
+
+---
+
+## 8. Security Requirements
+
+This repository may contain code related to security monitoring and automated response.
+
+The following must **never** be committed:
+
+* API keys;
+* passwords;
+* JWT secrets;
+* Telegram bot tokens;
+* Cloudflare credentials;
+* VirusTotal API keys;
+* private keys or certificates;
+* production log exports;
+* real user behavioral datasets containing sensitive information.
+
+Use `.env.example` as the configuration template.
+
+---
+
+## 9. Development Principles
+
+The implementation follows these principles:
+
+### Preserve before replacing
+
+Existing functionality must be understood before being rewritten.
+
+### Verify before trusting
+
+A component mentioned in the previous project documentation is not considered functional until it has been tested.
+
+### Security by design
+
+Authentication, authorization, secrets management, input validation, logging and failure handling are part of the implementation rather than post-development additions.
+
+### Observable behavior
+
+Important actions should produce useful logs and measurable results.
+
+### Reproducibility
+
+Development environments, database structures and deployment procedures must be documented.
+
+---
+
+## 10. Current Status
+
+### M0 — Takeover and Audit
+
+**Status: In progress**
+
+The repository is currently being prepared for the technical takeover of the previous implementation.
+
+The next step is to inspect the existing source code, identify the actual architecture, map dependencies, verify the database model, and establish a working baseline before modifying the application.
+
+---
+
+## 11. Documentation
+
+Technical documentation will be maintained under `docs/`.
+
+Important areas include:
+
+* architecture;
+* Phase 1 implementation;
+* Phase 2 behavioral AI;
+* deployment;
+* security;
+* testing;
+* incident/response procedures.
+
+---
+
+## 12. Project Team
+
+**Client / Commanditaire**
+
+M. Dekkak Mohamed — PDG
+
+**Technical team**
+
+Nezha Halla
+Hytham
+
+---
+
+## 13. Disclaimer
+
+This project is developed for the authorized security monitoring and protection of Orchid Island Real Estate infrastructure.
+
+All security testing, automated response, traffic analysis, IP blocking and external integrations must be performed within the scope authorized by the client.
