@@ -4,7 +4,7 @@
 
 > **Project:** Orchid Island Real Estate
 > **Client:** Orchid Island Real Estate — Direction Générale
-> **Technical team:** Nezha Halla & Hytham
+> **Technical team:** Nezha HALLA & Haytam RAGUEB
 > **Delivery target:** 20 September 2026
 > **Current phase:** Project takeover and technical audit
 
