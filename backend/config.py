@@ -104,7 +104,7 @@ class Config:
 
     GEMINI_MODEL = os.getenv(
         "GEMINI_MODEL",
-        "gemini-3.7-flash",
+        "gemini-3.6-flash",
     )
 
     # ========================================================
