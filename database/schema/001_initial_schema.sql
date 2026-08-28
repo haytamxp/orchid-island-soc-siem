@@ -94,3 +94,12 @@
        description TEXT,
        date_added DATETIME NOT NULL
    );
+
+    -- ============================================================
+    -- Foreign keys added after table creation to avoid circular
+    -- dependency issues between alerts and ai_reports.
+    -- ============================================================
+    ALTER TABLE alerts
+        ADD CONSTRAINT fk_alerts_ai_report
+        FOREIGN KEY (ai_report_id) REFERENCES ai_reports(id)
+        ON DELETE SET NULL;
