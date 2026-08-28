@@ -323,3 +323,27 @@ Hytham
 This project is developed for the authorized security monitoring and protection of Orchid Island Real Estate infrastructure.
 
 All security testing, automated response, traffic analysis, IP blocking and external integrations must be performed within the scope authorized by the client.
+
+## 14. Development Setup
+### Setting up the Python virtual environment
+
+**Linux / macOS (Ubuntu):**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+venv\Scripts\Activate.ps1
+pip install -r backend/requirements.txt
+```
+
+**Windows (cmd):**
+```cmd
+python -m venv venv
+venv\Scripts\activate
+pip install -r backend\requirements.txt
+```
