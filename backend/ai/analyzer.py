@@ -1,4 +1,4 @@
-"""
+﻿"""
 Main Gemini-based SOC analysis orchestrator.
 """
 
@@ -19,10 +19,31 @@ from .prompts import (
 )
 from .validator import validate_analysis
 
+from ai.rag.retriever import get_playbook
+
 
 class AIAnalyzer:
     """
     Coordinates the complete SOC AI analysis workflow.
+
+    Workflow:
+
+        SecurityEvent
+            |
+            v
+        Prompt construction
+            |
+            v
+        Gemini structured analysis
+            |
+            v
+        Business validation
+            |
+            v
+        RAG playbook retrieval
+            |
+            v
+        AIAnalysis with playbook
     """
 
     def __init__(
@@ -85,7 +106,7 @@ class AIAnalyzer:
 
         try:
 
-            return validate_analysis(
+            validated = validate_analysis(
                 result
             )
 
@@ -98,3 +119,18 @@ class AIAnalyzer:
             raise AIAnalysisError(
                 f"AI validation failed: {exc}"
             ) from exc
+
+        # Post-classification RAG:
+        #
+        # Gemini determines the attack classification first.
+        # Python then retrieves the corresponding trusted local
+        # remediation playbook from the fixed allow-list.
+        playbook = get_playbook(
+            validated.classification
+        )
+
+        return validated.model_copy(
+            update={
+                "playbook": playbook,
+            }
+        )
