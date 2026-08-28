@@ -1,11 +1,11 @@
 ﻿"""
-Simple classification-based playbook retriever.
+Classification-based SOC playbook retriever.
 
-The retriever maps a validated AI classification to a local
-security remediation playbook.
+The retriever maps validated AI classifications to trusted local
+remediation playbooks.
 
-Only filenames from the fixed allow-list below can be opened.
-No user-supplied filesystem path is accepted.
+Only predefined filenames from CLASSIFICATION_TO_PLAYBOOK can be
+loaded. No user-controlled filesystem path is accepted.
 """
 
 from __future__ import annotations
@@ -14,30 +14,36 @@ from pathlib import Path
 from typing import Any
 
 
-PLAYBOOKS_DIR = Path(__file__).resolve().parent / "playbooks"
+PLAYBOOKS_DIR = (
+    Path(__file__).resolve().parent / "playbooks"
+)
 
 
 CLASSIFICATION_TO_PLAYBOOK: dict[str, str] = {
     "SQL_INJECTION": "playbook_sqli.md",
     "XSS": "playbook_xss.md",
     "BRUTE_FORCE": "playbook_bruteforce.md",
-
-    # The current backend Classification enum does not yet expose
-    # CSRF. This mapping is kept ready for future enum support.
     "CSRF": "playbook_csrf.md",
+    "PATH_TRAVERSAL": "playbook_path_traversal.md",
+    "MALWARE": "playbook_malware.md",
+    "CREDENTIAL_ATTACK": "playbook_credential_attack.md",
+    "SCANNING": "playbook_scanning.md",
 }
 
 
-def get_playbook(classification: Any) -> str | None:
+def get_playbook(
+    classification: Any,
+) -> str | None:
     """
-    Return the playbook content for a classification.
+    Return the remediation playbook for a classification.
 
-    The function accepts either:
+    Supported inputs:
     - a string such as "SQL_INJECTION";
-    - an Enum-like object exposing a .value attribute.
+    - an Enum instance such as Classification.SQL_INJECTION.
 
     Returns:
-        The Markdown playbook content, or None when no playbook exists.
+        The Markdown playbook content, or None when no
+        playbook is mapped or the file does not exist.
     """
 
     classification_value = getattr(
