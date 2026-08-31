@@ -7,6 +7,10 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from backend.routes.dashboard import dashboard_bp
 from backend.routes.auth import auth_bp
+from backend.routes.events import events_bp
+from backend.routes.alerts import alerts_bp
+from backend.routes.reports import reports_bp
+from backend.routes.agents import agents_bp
 
 
 def create_app() -> Flask:
@@ -29,6 +33,10 @@ def create_app() -> Flask:
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(events_bp)
+    app.register_blueprint(alerts_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(agents_bp)
 
     @app.route(
         "/",
