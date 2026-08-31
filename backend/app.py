@@ -5,7 +5,7 @@ Flask backend entry point.
 
 from flask import Flask, jsonify
 from flask_cors import CORS
-
+from backend.routes.dashboard import dashboard_bp
 from backend.routes.auth import auth_bp
 
 
@@ -28,6 +28,7 @@ def create_app() -> Flask:
     )
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(dashboard_bp)
 
     @app.route(
         "/",
