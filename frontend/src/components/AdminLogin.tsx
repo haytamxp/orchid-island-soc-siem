@@ -10,7 +10,7 @@ import {
   KeyRound,
 } from 'lucide-react';
 
-import { API_BASE_URL } from '../config';
+import { BACKEND_URL } from '../config';
 import { saveAuthSession } from '../services/auth';
 
 interface AdminLoginProps {
@@ -59,7 +59,7 @@ export const AdminLogin: React.FC<
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/auth/login`,
+        `${BACKEND_URL}/api/auth/login`,
         {
           method: 'POST',
           headers: {

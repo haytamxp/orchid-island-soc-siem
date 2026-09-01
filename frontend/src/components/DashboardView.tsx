@@ -1,5 +1,6 @@
 import React from 'react';
 import type { SecurityEvent, Alert, Agent } from '../data/mockData';
+import type { SocStats, TrafficPoint, DataSource } from '../hooks/useSocData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Shield, AlertTriangle, Cpu, Users, ArrowUpRight, TrendingUp } from 'lucide-react';
 
@@ -7,36 +8,46 @@ interface DashboardViewProps {
   events: SecurityEvent[];
   alerts: Alert[];
   agents: Agent[];
+  stats: SocStats | null;
+  traffic: TrafficPoint[];
+  dataSource: DataSource;
   setView: (view: string) => void;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, agents, setView }) => {
-  // Calculations
-  const totalEvents = events.length;
-  const criticalAlerts = alerts.filter(a => a.severity === 'Critical').length;
-  const onlineAgents = agents.filter(a => a.status === 'Online').length;
-  const totalAgentsCount = agents.length;
-  
+// Fallback traffic curve used when the backend has no hourly data yet.
+const FALLBACK_TRAFFIC = [
+  { time: '04:00', Allowed: 340, Blocked: 12 },
+  { time: '06:00', Allowed: 450, Blocked: 24 },
+  { time: '08:00', Allowed: 780, Blocked: 56 },
+  { time: '10:00', Allowed: 950, Blocked: 89 },
+  { time: '12:00', Allowed: 1100, Blocked: 120 },
+  { time: '14:00', Allowed: 920, Blocked: 154 },
+  { time: '15:00', Allowed: 1240, Blocked: 210 },
+];
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, agents, stats, traffic, dataSource, setView }) => {
+  // Prefer authoritative backend aggregates; fall back to what we can derive locally.
+  const totalEvents = stats ? stats.total_events : events.length;
+  const criticalAlerts = stats ? stats.critical_alerts : alerts.filter(a => a.severity === 'Critical').length;
+  const onlineAgents = stats ? stats.agents_online : agents.filter(a => a.status === 'Online').length;
+  const totalAgentsCount = stats ? stats.agents_online + stats.agents_offline : agents.length;
+
   // SIEM Server Resources (Based on VM rayane-virtual-machine)
   const rayaneVM = agents.find(a => a.name === 'rayane-virtual-machine') || { cpu_usage: 68, ram_usage: 74 };
   const cpuUsage = rayaneVM.cpu_usage;
   const ramUsage = rayaneVM.ram_usage;
 
-  // Heuristic Threat Index calculation
-  // Let's compute based on critical/high alerts and system load:
-  // base = 30 + (criticalAlerts * 15) + (alerts.length * 4) -> cap at 100
-  const threatIndexValue = Math.min(100, 35 + (criticalAlerts * 15) + (alerts.filter(a => a.severity === 'High').length * 8));
+  // Threat Index: use the backend value when present, otherwise a local heuristic.
+  const heuristicThreatIndex = Math.min(100, 35 + (criticalAlerts * 15) + (alerts.filter(a => a.severity === 'High').length * 8));
+  const rawThreatIndex = stats ? stats.threat_index : heuristicThreatIndex;
+  // Backend may report the index on a 0–1 or 0–100 scale depending on seed data.
+  const normalizedThreatIndex = rawThreatIndex > 0 && rawThreatIndex <= 1 ? rawThreatIndex * 100 : rawThreatIndex;
+  const threatIndexValue = Math.round(Math.min(100, Math.max(0, normalizedThreatIndex)));
 
-  // Data for Area Chart: Blocked vs Allowed over a 12h span
-  const trafficData = [
-    { time: '04:00', Allowed: 340, Blocked: 12 },
-    { time: '06:00', Allowed: 450, Blocked: 24 },
-    { time: '08:00', Allowed: 780, Blocked: 56 },
-    { time: '10:00', Allowed: 950, Blocked: 89 },
-    { time: '12:00', Allowed: 1100, Blocked: 120 },
-    { time: '14:00', Allowed: 920, Blocked: 154 },
-    { time: '15:00', Allowed: 1240, Blocked: 210 },
-  ];
+  // Data for Area Chart: Blocked vs Allowed per hour, from the backend when available.
+  const trafficData = traffic.length > 0
+    ? traffic.map(point => ({ time: point.hour, Allowed: point.allowed, Blocked: point.blocked }))
+    : FALLBACK_TRAFFIC;
 
   // Data for Attack Vectors Pie Chart
   const pieData = [
@@ -61,7 +72,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      
+
+      {dataSource === 'mock' && (
+        <div style={{
+          padding: '8px 14px',
+          borderRadius: '8px',
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          color: 'var(--amber)',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+        }}>
+          Demo data — the SOC backend is unreachable, showing bundled sample datasets.
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
         
@@ -74,7 +99,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-            <span style={{ fontSize: '2rem', fontWeight: 700 }}>{totalEvents * 142}</span>
+            <span style={{ fontSize: '2rem', fontWeight: 700 }}>{totalEvents.toLocaleString()}</span>
             <span style={{ fontSize: '0.75rem', color: 'var(--emerald)', display: 'flex', alignItems: 'center', gap: '2px' }}>
               <TrendingUp size={12} /> +12.4%
             </span>

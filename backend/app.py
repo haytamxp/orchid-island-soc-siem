@@ -11,6 +11,7 @@ from backend.routes.events import events_bp
 from backend.routes.alerts import alerts_bp
 from backend.routes.reports import reports_bp
 from backend.routes.agents import agents_bp
+from backend.routes.fim import fim_bp
 
 
 def create_app() -> Flask:
@@ -37,6 +38,7 @@ def create_app() -> Flask:
     app.register_blueprint(alerts_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(agents_bp)
+    app.register_blueprint(fim_bp)
 
     @app.route(
         "/",

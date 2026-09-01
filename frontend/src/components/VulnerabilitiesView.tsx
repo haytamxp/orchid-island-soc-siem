@@ -16,12 +16,15 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({ vulner
   const [processingVulnId, setProcessingVulnId] = useState<string | null>(null);
 
   // Normalize impacted_agents: backend may return a comma-separated string
-  const normVulns = vulns.map(v => ({
-    ...v,
-    impacted_agents: Array.isArray(v.impacted_agents)
-      ? v.impacted_agents
-      : (typeof v.impacted_agents === 'string' ? v.impacted_agents.split(',').map((s: string) => s.trim()).filter(Boolean) : [])
-  }));
+  const normVulns = vulns.map(v => {
+    const raw: unknown = v.impacted_agents;
+    const impacted_agents: string[] = Array.isArray(raw)
+      ? (raw as string[])
+      : typeof raw === 'string'
+        ? raw.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    return { ...v, impacted_agents };
+  });
 
   const filteredVulns = normVulns.filter(v => {
     const matchesSearch = 
