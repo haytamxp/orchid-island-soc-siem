@@ -48,8 +48,8 @@ def dashboard_traffic():
         SELECT
             DATE_FORMAT(timestamp, '%H:00') AS hour,
             COUNT(*) AS total,
-            SUM(CASE WHEN action_taken IN ('Dropped','Blocked','Killed') THEN 1 ELSE 0 END) AS blocked,
-            SUM(CASE WHEN action_taken IN ('Allowed','Logged') THEN 1 ELSE 0 END) AS allowed
+            CAST(SUM(CASE WHEN action_taken IN ('Dropped','Blocked','Killed') THEN 1 ELSE 0 END) AS UNSIGNED) AS blocked,
+            CAST(SUM(CASE WHEN action_taken IN ('Allowed','Logged') THEN 1 ELSE 0 END) AS UNSIGNED) AS allowed
         FROM events
         WHERE timestamp >= NOW() - INTERVAL 24 HOUR
         GROUP BY DATE_FORMAT(timestamp, '%H:00')
