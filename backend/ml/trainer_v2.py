@@ -1,9 +1,5 @@
 ﻿"""
-Behavioral XGBoost trainer.
-
-Usage:
-
-    python -m backend.ml.trainer_v2 --dataset database/ml_training_dataset.csv
+Behavioral XGBoost trainer with temporal evaluation.
 """
 
 from __future__ import annotations
@@ -49,17 +45,30 @@ def _class_weight(
         np.sum(y_train == 1)
     )
 
-    if positives == 0:
+    if negatives == 0 or positives == 0:
         raise ValueError(
-            "Training partition contains no malicious samples"
+            "Training data must contain both classes"
         )
 
-    if negatives == 0:
-        raise ValueError(
-            "Training partition contains no benign samples"
-        )
+    return (
+        negatives
+        / positives
+    )
 
-    return negatives / positives
+
+def _validate_partition(
+    labels: np.ndarray,
+    name: str,
+) -> None:
+    unique = set(
+        np.unique(labels)
+    )
+
+    if unique != {0, 1}:
+        raise ValueError(
+            f"{name} partition must contain "
+            f"both classes, got {unique}"
+        )
 
 
 def train(
@@ -67,9 +76,16 @@ def train(
     model_path: str | Path = DEFAULT_MODEL_PATH,
     metrics_path: str | Path = DEFAULT_METRICS_PATH,
 ) -> dict[str, Any]:
+
     dataset = build_dataset_from_csv(
         dataset_path
     )
+
+    if len(dataset.labels) < 1000:
+        raise ValueError(
+            "Behavioral training requires "
+            "at least 1000 events"
+        )
 
     split = temporal_split(
         dataset.timestamps,
@@ -100,6 +116,21 @@ def train(
     y_test = dataset.labels[
         split.test_indices
     ]
+
+    _validate_partition(
+        y_train,
+        "train",
+    )
+
+    _validate_partition(
+        y_validation,
+        "validation",
+    )
+
+    _validate_partition(
+        y_test,
+        "test",
+    )
 
     scale_pos_weight = _class_weight(
         y_train
@@ -256,7 +287,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Train Orchid Island "
-            "behavioral risk model"
+            "behavioral XGBoost model"
         )
     )
 
@@ -306,7 +337,8 @@ def main() -> None:
     )
 
     print(
-        f"Train: {metrics['split_sizes']['train']}"
+        f"Train: "
+        f"{metrics['split_sizes']['train']}"
     )
 
     print(
@@ -315,7 +347,8 @@ def main() -> None:
     )
 
     print(
-        f"Test: {metrics['split_sizes']['test']}"
+        f"Test: "
+        f"{metrics['split_sizes']['test']}"
     )
 
     print(
@@ -324,18 +357,8 @@ def main() -> None:
     )
 
     print(
-        f"Validation F1: "
-        f"{validation['f1']:.4f}"
-    )
-
-    print(
         f"Validation PR-AUC: "
         f"{validation['pr_auc']:.4f}"
-    )
-
-    print(
-        f"Test F1: "
-        f"{test['f1']:.4f}"
     )
 
     print(
@@ -354,6 +377,11 @@ def main() -> None:
     )
 
     print(
+        f"Test F1: "
+        f"{test['f1']:.4f}"
+    )
+
+    print(
         f"Test FPR: "
         f"{test['false_positive_rate']:.4f}"
     )
@@ -361,6 +389,10 @@ def main() -> None:
     print(
         f"Test FNR: "
         f"{test['false_negative_rate']:.4f}"
+    )
+
+    print(
+        f"Model: {args.model}"
     )
 
 
