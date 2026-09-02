@@ -1,7 +1,8 @@
 ﻿"""
 Historical behavioral feature extraction.
 
-Only events occurring before the current event are used.
+The engine is time-aware and never allows future events to influence the
+behavioral state of an earlier event.
 """
 
 from __future__ import annotations
@@ -40,11 +41,15 @@ class BehaviorEngine:
         self.last_seen: dict[str, object] = {}
 
     @staticmethod
-    def _source_key(event: CanonicalEvent) -> str:
+    def _source_key(
+        event: CanonicalEvent,
+    ) -> str:
         return event.src_ip or "__unknown_source__"
 
     @staticmethod
-    def _failed_auth(event: CanonicalEvent) -> bool:
+    def _failed_auth(
+        event: CanonicalEvent,
+    ) -> bool:
         text = (
             f"{event.action} "
             f"{event.description}"
@@ -69,8 +74,22 @@ class BehaviorEngine:
         queue: Deque[HistoricalEvent],
         cutoff: object,
     ) -> None:
-        while queue and queue[0].timestamp < cutoff:
-            queue.popleft()
+        """
+        Remove stale events without assuming the queue is perfectly ordered.
+        """
+
+        remaining = [
+            item
+            for item in queue
+            if item.timestamp >= cutoff
+        ]
+
+        remaining.sort(
+            key=lambda item: item.timestamp
+        )
+
+        queue.clear()
+        queue.extend(remaining)
 
     @staticmethod
     def _window(
@@ -83,7 +102,7 @@ class BehaviorEngine:
         return [
             item
             for item in queue
-            if item.timestamp >= cutoff
+            if cutoff <= item.timestamp <= now
         ]
 
     @staticmethod
@@ -159,7 +178,9 @@ class BehaviorEngine:
                     if 500 <= item.http_status <= 599
                 )
             ),
-            "http_total": float(len(http_items)),
+            "http_total": float(
+                len(http_items)
+            ),
             "bytes_out": float(
                 sum(
                     item.bytes_out
@@ -198,11 +219,29 @@ class BehaviorEngine:
             self.WINDOW_1H,
         )
 
-        stats_1m = self._stats(history_1m)
-        stats_5m = self._stats(history_5m)
-        stats_1h = self._stats(history_1h)
+        stats_1m = self._stats(
+            history_1m
+        )
 
-        previous_time = self.last_seen.get(key)
+        stats_5m = self._stats(
+            history_5m
+        )
+
+        stats_1h = self._stats(
+            history_1h
+        )
+
+        prior_timestamps = [
+            item.timestamp
+            for item in queue
+            if item.timestamp <= event.timestamp
+        ]
+
+        previous_time = (
+            max(prior_timestamps)
+            if prior_timestamps
+            else None
+        )
 
         if previous_time is None:
             seconds_since_previous = 3600.0
@@ -309,6 +348,26 @@ class BehaviorEngine:
             )
         )
 
-        self.last_seen[key] = event.timestamp
+        queue_sorted = sorted(
+            queue,
+            key=lambda item: item.timestamp,
+        )
+
+        queue.clear()
+        queue.extend(queue_sorted)
+
+        newest_historical_timestamp = max(
+            (
+                item.timestamp
+                for item in queue
+                if item.timestamp <= event.timestamp
+            ),
+            default=None,
+        )
+
+        if newest_historical_timestamp is not None:
+            self.last_seen[key] = (
+                newest_historical_timestamp
+            )
 
         return result

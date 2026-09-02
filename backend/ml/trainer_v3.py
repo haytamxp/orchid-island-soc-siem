@@ -1,5 +1,5 @@
 ﻿"""
-Behavioral XGBoost trainer with temporal evaluation.
+Behavior-first V3 XGBoost trainer.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from backend.ml.evaluation import (
     evaluate_binary,
     select_threshold,
 )
-from backend.ml.feature_pipeline import (
+from backend.ml.feature_pipeline_v3 import (
     build_dataset_from_csv,
 )
 from backend.ml.temporal_split import (
@@ -25,29 +25,31 @@ from backend.ml.temporal_split import (
 )
 
 
-DEFAULT_MODEL_PATH = Path(
-    "models/orchid_risk_xgb_v2.joblib"
+DEFAULT_MODEL = (
+    "models/"
+    "orchid_risk_xgb_v3.joblib"
 )
 
-DEFAULT_METRICS_PATH = Path(
-    "models/orchid_risk_metrics_v2.json"
+DEFAULT_METRICS = (
+    "models/"
+    "orchid_risk_metrics_v3.json"
 )
 
 
-def _class_weight(
-    y_train: np.ndarray,
+def positive_weight(
+    labels: np.ndarray,
 ) -> float:
     negatives = int(
-        np.sum(y_train == 0)
+        np.sum(labels == 0)
     )
 
     positives = int(
-        np.sum(y_train == 1)
+        np.sum(labels == 1)
     )
 
     if negatives == 0 or positives == 0:
         raise ValueError(
-            "Training data must contain both classes"
+            "Both classes are required"
         )
 
     return (
@@ -56,25 +58,10 @@ def _class_weight(
     )
 
 
-def _validate_partition(
-    labels: np.ndarray,
-    name: str,
-) -> None:
-    unique = set(
-        np.unique(labels)
-    )
-
-    if unique != {0, 1}:
-        raise ValueError(
-            f"{name} partition must contain "
-            f"both classes, got {unique}"
-        )
-
-
 def train(
-    dataset_path: str | Path,
-    model_path: str | Path = DEFAULT_MODEL_PATH,
-    metrics_path: str | Path = DEFAULT_METRICS_PATH,
+    dataset_path: str,
+    model_path: str = DEFAULT_MODEL,
+    metrics_path: str = DEFAULT_METRICS,
 ) -> dict[str, Any]:
 
     dataset = build_dataset_from_csv(
@@ -83,8 +70,7 @@ def train(
 
     if len(dataset.labels) < 1000:
         raise ValueError(
-            "Behavioral training requires "
-            "at least 1000 events"
+            "V3 requires at least 1000 events"
         )
 
     split = temporal_split(
@@ -117,40 +103,25 @@ def train(
         split.test_indices
     ]
 
-    _validate_partition(
-        y_train,
-        "train",
-    )
-
-    _validate_partition(
-        y_validation,
-        "validation",
-    )
-
-    _validate_partition(
-        y_test,
-        "test",
-    )
-
-    scale_pos_weight = _class_weight(
+    weight = positive_weight(
         y_train
     )
 
     model = XGBClassifier(
-        n_estimators=500,
+        n_estimators=600,
         max_depth=6,
-        learning_rate=0.05,
-        min_child_weight=3,
+        learning_rate=0.04,
+        min_child_weight=4,
         subsample=0.85,
         colsample_bytree=0.85,
-        reg_alpha=0.05,
-        reg_lambda=2.0,
+        reg_alpha=0.10,
+        reg_lambda=2.5,
         objective="binary:logistic",
         eval_metric="aucpr",
         tree_method="hist",
         random_state=42,
         n_jobs=4,
-        scale_pos_weight=scale_pos_weight,
+        scale_pos_weight=weight,
     )
 
     model.fit(
@@ -183,16 +154,20 @@ def train(
         )[:, 1]
     )
 
-    validation_metrics = evaluate_binary(
-        y_validation,
-        validation_scores,
-        threshold,
+    validation_result = (
+        evaluate_binary(
+            y_validation,
+            validation_scores,
+            threshold,
+        )
     )
 
-    test_metrics = evaluate_binary(
-        y_test,
-        test_scores,
-        threshold,
+    test_result = (
+        evaluate_binary(
+            y_test,
+            test_scores,
+            threshold,
+        )
     )
 
     model_file = Path(
@@ -213,23 +188,25 @@ def train(
         exist_ok=True,
     )
 
-    artifact = {
-        "model": model,
-        "feature_names": dataset.feature_names,
-        "threshold": threshold,
-        "version": "v2",
-    }
-
     joblib.dump(
-        artifact,
+        {
+            "model": model,
+            "feature_names": (
+                dataset.feature_names
+            ),
+            "threshold": threshold,
+            "version": "v3",
+            "feature_policy": (
+                "behavior-first"
+            ),
+        },
         model_file,
     )
 
     metrics = {
-        "dataset": str(
-            dataset_path
-        ),
-        "version": "v2",
+        "version": "v3",
+        "feature_policy": "behavior-first",
+        "dataset": dataset_path,
         "samples": int(
             len(dataset.labels)
         ),
@@ -259,13 +236,13 @@ def train(
                 len(y_test)
             ),
         },
-        "scale_pos_weight": scale_pos_weight,
-        "decision_threshold": threshold,
+        "scale_pos_weight": weight,
+        "threshold": threshold,
         "validation": (
-            validation_metrics.to_dict()
+            validation_result.to_dict()
         ),
         "test": (
-            test_metrics.to_dict()
+            test_result.to_dict()
         ),
         "feature_names": (
             dataset.feature_names
@@ -284,12 +261,7 @@ def train(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Train Orchid Island "
-            "behavioral XGBoost model"
-        )
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--dataset",
@@ -298,16 +270,12 @@ def main() -> None:
 
     parser.add_argument(
         "--model",
-        default=str(
-            DEFAULT_MODEL_PATH
-        ),
+        default=DEFAULT_MODEL,
     )
 
     parser.add_argument(
         "--metrics",
-        default=str(
-            DEFAULT_METRICS_PATH
-        ),
+        default=DEFAULT_METRICS,
     )
 
     args = parser.parse_args()
@@ -318,81 +286,53 @@ def main() -> None:
         metrics_path=args.metrics,
     )
 
-    validation = metrics[
-        "validation"
-    ]
-
-    test = metrics["test"]
-
     print(
-        "Behavioral model trained successfully."
+        "V3 behavioral model trained."
     )
 
     print(
-        f"Samples: {metrics['samples']}"
+        f"Samples: "
+        f"{metrics['samples']}"
     )
 
     print(
-        f"Features: {metrics['features']}"
-    )
-
-    print(
-        f"Train: "
-        f"{metrics['split_sizes']['train']}"
-    )
-
-    print(
-        f"Validation: "
-        f"{metrics['split_sizes']['validation']}"
-    )
-
-    print(
-        f"Test: "
-        f"{metrics['split_sizes']['test']}"
+        f"Features: "
+        f"{metrics['features']}"
     )
 
     print(
         f"Threshold: "
-        f"{metrics['decision_threshold']:.3f}"
-    )
-
-    print(
-        f"Validation PR-AUC: "
-        f"{validation['pr_auc']:.4f}"
+        f"{metrics['threshold']:.3f}"
     )
 
     print(
         f"Test PR-AUC: "
-        f"{test['pr_auc']:.4f}"
+        f"{metrics['test']['pr_auc']:.4f}"
     )
 
     print(
         f"Test Precision: "
-        f"{test['precision']:.4f}"
+        f"{metrics['test']['precision']:.4f}"
     )
 
     print(
         f"Test Recall: "
-        f"{test['recall']:.4f}"
+        f"{metrics['test']['recall']:.4f}"
     )
 
     print(
         f"Test F1: "
-        f"{test['f1']:.4f}"
+        f"{metrics['test']['f1']:.4f}"
     )
 
     print(
         f"Test FPR: "
-        f"{test['false_positive_rate']:.4f}"
+        f"{metrics['test']['false_positive_rate']:.4f}"
     )
 
     print(
         f"Test FNR: "
-        f"{test['false_negative_rate']:.4f}"
-    )
-
-    print(
-        f"Model: {args.model}"
+        f"{metrics['test']['false_negative_rate']:.4f}"
     )
 
 
