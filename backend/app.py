@@ -12,6 +12,8 @@ from backend.routes.alerts import alerts_bp
 from backend.routes.reports import reports_bp
 from backend.routes.agents import agents_bp
 from backend.routes.fim import fim_bp
+from backend.routes.vulnerabilities import vulnerabilities_bp
+from backend.routes.iocs import iocs_bp
 
 
 def create_app() -> Flask:
@@ -39,6 +41,8 @@ def create_app() -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(agents_bp)
     app.register_blueprint(fim_bp)
+    app.register_blueprint(vulnerabilities_bp)
+    app.register_blueprint(iocs_bp)
 
     @app.route(
         "/",
