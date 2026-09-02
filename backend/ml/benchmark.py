@@ -1,5 +1,5 @@
 ﻿"""
-Run a complete robustness benchmark against multiple datasets.
+Benchmark orchestration for model robustness.
 """
 
 from __future__ import annotations
@@ -36,16 +36,16 @@ def run_benchmark(
     )
 
     if output_path:
-        path = Path(
+        output = Path(
             output_path
         )
 
-        path.parent.mkdir(
+        output.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        path.write_text(
+        output.write_text(
             json.dumps(
                 report,
                 indent=2,

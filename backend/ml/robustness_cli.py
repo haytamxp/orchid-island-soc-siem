@@ -1,5 +1,5 @@
 ﻿"""
-CLI entry point for generating and evaluating ML stress tests.
+CLI entry point for ML robustness evaluation.
 """
 
 from __future__ import annotations
@@ -26,13 +26,11 @@ def main() -> None:
     parser.add_argument(
         "--dataset",
         required=True,
-        help="Chronological labeled test dataset",
     )
 
     parser.add_argument(
         "--model",
         required=True,
-        help="Model artifact",
     )
 
     parser.add_argument(

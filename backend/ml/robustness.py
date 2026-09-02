@@ -1,5 +1,8 @@
 ﻿"""
-Robustness evaluation helpers for the Orchid Island ML detector.
+Model-aware robustness evaluation.
+
+V2 uses the original 48-feature pipeline.
+V3 uses the behavior-first 43-feature pipeline.
 """
 
 from __future__ import annotations
@@ -9,9 +12,19 @@ from typing import Any
 
 import numpy as np
 
-from backend.ml.evaluation import evaluate_binary
-from backend.ml.feature_pipeline import build_dataset_from_csv
-from backend.ml.model_io import load_model_artifact
+from backend.ml.evaluation import (
+    evaluate_binary,
+)
+from backend.ml.feature_pipeline import (
+    build_dataset_from_csv as build_dataset_v2,
+)
+from backend.ml.feature_pipeline_v3 import (
+    build_dataset_from_csv as build_dataset_v3,
+)
+from backend.ml.model_io import (
+    ModelArtifact,
+    load_model_artifact,
+)
 
 
 @dataclass(slots=True)
@@ -32,17 +45,49 @@ class BenchmarkResult:
         return asdict(self)
 
 
+def load_features_for_model(
+    artifact: ModelArtifact,
+    dataset_path: str,
+):
+    if artifact.version == "v3":
+        return build_dataset_v3(
+            dataset_path
+        )
+
+    if artifact.version == "v2":
+        return build_dataset_v2(
+            dataset_path
+        )
+
+    if len(artifact.feature_names) == 43:
+        return build_dataset_v3(
+            dataset_path
+        )
+
+    if len(artifact.feature_names) == 48:
+        return build_dataset_v2(
+            dataset_path
+        )
+
+    raise ValueError(
+        "Unsupported model feature schema: "
+        f"version={artifact.version!r}, "
+        f"features={len(artifact.feature_names)}"
+    )
+
+
 def evaluate_dataset(
     model_path: str,
     dataset_path: str,
     name: str,
 ) -> BenchmarkResult:
-    dataset = build_dataset_from_csv(
-        dataset_path
-    )
-
     artifact = load_model_artifact(
         model_path
+    )
+
+    dataset = load_features_for_model(
+        artifact,
+        dataset_path,
     )
 
     scores = artifact.predict_proba(
@@ -68,8 +113,12 @@ def evaluate_dataset(
         f1=result.f1,
         pr_auc=result.pr_auc,
         roc_auc=result.roc_auc,
-        false_positive_rate=result.false_positive_rate,
-        false_negative_rate=result.false_negative_rate,
+        false_positive_rate=(
+            result.false_positive_rate
+        ),
+        false_negative_rate=(
+            result.false_negative_rate
+        ),
         threshold=artifact.threshold,
     )
 
