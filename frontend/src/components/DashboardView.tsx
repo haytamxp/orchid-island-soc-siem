@@ -14,8 +14,8 @@ interface DashboardViewProps {
   setView: (view: string) => void;
 }
 
-// Fallback traffic curve used when the backend has no hourly data yet.
-const FALLBACK_TRAFFIC = [
+// Demo curve shown only when we're on bundled mock data (backend unreachable).
+const MOCK_TRAFFIC = [
   { time: '04:00', Allowed: 340, Blocked: 12 },
   { time: '06:00', Allowed: 450, Blocked: 24 },
   { time: '08:00', Allowed: 780, Blocked: 56 },
@@ -24,6 +24,11 @@ const FALLBACK_TRAFFIC = [
   { time: '14:00', Allowed: 920, Blocked: 154 },
   { time: '15:00', Allowed: 1240, Blocked: 210 },
 ];
+
+// Backend stores xgboost_probability / threat_index as a 0–1 probability;
+// the mock dataset uses a 0–100 percentage. Normalise both to 0–100 for display.
+const toPercent = (value: number): number =>
+  Math.round(value > 0 && value <= 1 ? value * 100 : value);
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, agents, stats, traffic, dataSource, setView }) => {
   // Prefer authoritative backend aggregates; fall back to what we can derive locally.
@@ -40,16 +45,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
   // Threat Index: use the backend value when present, otherwise a local heuristic.
   const heuristicThreatIndex = Math.min(100, 35 + (criticalAlerts * 15) + (alerts.filter(a => a.severity === 'High').length * 8));
   const rawThreatIndex = stats ? stats.threat_index : heuristicThreatIndex;
-  // Backend may report the index on a 0–1 or 0–100 scale depending on seed data.
-  const normalizedThreatIndex = rawThreatIndex > 0 && rawThreatIndex <= 1 ? rawThreatIndex * 100 : rawThreatIndex;
-  const threatIndexValue = Math.round(Math.min(100, Math.max(0, normalizedThreatIndex)));
+  const threatIndexValue = Math.min(100, Math.max(0, toPercent(rawThreatIndex)));
 
-  // Data for Area Chart: Blocked vs Allowed per hour, from the backend when available.
+  // Traffic chart: real hourly buckets when the backend has them; the demo curve
+  // only on mock data. Live-but-empty stays empty (valid state — no recent events).
+  // NB: /api/dashboard/traffic returns blocked/allowed as strings (Flask serialises
+  // MariaDB's SUM() Decimal as a string) — coerce with Number() so Recharts scales.
   const trafficData = traffic.length > 0
-    ? traffic.map(point => ({ time: point.hour, Allowed: point.allowed, Blocked: point.blocked }))
-    : FALLBACK_TRAFFIC;
+    ? traffic.map(point => ({
+        time: point.hour,
+        Allowed: Number(point.allowed) || 0,
+        Blocked: Number(point.blocked) || 0,
+      }))
+    : dataSource === 'mock'
+      ? MOCK_TRAFFIC
+      : [];
+  const trafficEmpty = trafficData.length === 0;
 
-  // Data for Attack Vectors Pie Chart
+  // TODO(nezha): no backend endpoint for attack-vector breakdown yet — hardcoded.
+  // Needs something like GET /api/dashboard/attack-vectors -> [{ name, value }].
   const pieData = [
     { name: 'SQL Injection', value: 35, color: '#ef4444' }, // Red
     { name: 'Brute Force SSH', value: 30, color: '#f59e0b' }, // Amber
@@ -100,6 +114,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
             <span style={{ fontSize: '2rem', fontWeight: 700 }}>{totalEvents.toLocaleString()}</span>
+            {/* TODO(nezha): hardcoded — backend has no period-over-period trend yet. */}
             <span style={{ fontSize: '0.75rem', color: 'var(--emerald)', display: 'flex', alignItems: 'center', gap: '2px' }}>
               <TrendingUp size={12} /> +12.4%
             </span>
@@ -204,6 +219,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
           </div>
           
           <div style={{ width: '100%', height: '280px', minHeight: '280px' }}>
+            {trafficEmpty ? (
+              <div style={{
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '0.8rem',
+              }}>
+                No network traffic recorded in the last 24 hours.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trafficData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
@@ -231,6 +258,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
                 <Area type="monotone" dataKey="Blocked" stroke="var(--red)" strokeWidth={2} fillOpacity={1} fill="url(#colorBlocked)" />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -345,7 +373,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
                     {alert.severity}
                   </span>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Prob: {alert.xgboost_probability}%
+                    Prob: {toPercent(alert.xgboost_probability)}%
                   </span>
                 </div>
               </div>
