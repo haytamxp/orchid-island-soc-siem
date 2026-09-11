@@ -5,6 +5,8 @@ Flask backend entry point.
 
 from flask import Flask, jsonify
 from flask_cors import CORS
+
+from backend.config import Config
 from backend.routes.dashboard import dashboard_bp
 from backend.routes.auth import auth_bp
 from backend.routes.events import events_bp
@@ -72,7 +74,7 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=False
+        host=Config.FLASK_HOST,
+        port=Config.FLASK_PORT,
+        debug=Config.FLASK_DEBUG
     )
