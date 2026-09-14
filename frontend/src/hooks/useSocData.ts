@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 import { BACKEND_URL } from '../config';
 
@@ -12,6 +13,7 @@ import type {
   AiReport,
   Alert,
   SecurityEvent,
+  ThreatIntelIOC,
 } from '../data/mockData';
 
 import {
@@ -40,6 +42,18 @@ export interface TrafficPoint {
   allowed: number;
 }
 
+/** Live host telemetry from `GET /api/dashboard/host-resources`. */
+export interface HostResources {
+  cpu_usage: number;
+  ram_usage: number;
+}
+
+/** One category bucket from `GET /api/dashboard/attack-vectors`. */
+export interface AttackVector {
+  name: string;
+  value: number;
+}
+
 export type DataSource = 'live' | 'mock';
 
 export interface UseSocDataResult {
@@ -49,10 +63,14 @@ export interface UseSocDataResult {
   dataSource: DataSource;
   stats: SocStats | null;
   traffic: TrafficPoint[];
+  hostResources: HostResources | null;
+  attackVectors: AttackVector[];
   events: SecurityEvent[];
   alerts: Alert[];
   agents: Agent[];
   reports: AiReport[];
+  iocs: ThreatIntelIOC[];
+  setIocs: Dispatch<SetStateAction<ThreatIntelIOC[]>>;
   refresh: () => Promise<void>;
 }
 
@@ -102,10 +120,13 @@ export function useSocData(): UseSocDataResult {
 
   const [stats, setStats] = useState<SocStats | null>(null);
   const [traffic, setTraffic] = useState<TrafficPoint[]>([]);
+  const [hostResources, setHostResources] = useState<HostResources | null>(null);
+  const [attackVectors, setAttackVectors] = useState<AttackVector[]>([]);
   const [events, setEvents] = useState<SecurityEvent[]>(initialEvents);
   const [alerts, setAlerts] = useState<Alert[]>(initialAlerts);
   const [agents, setAgents] = useState<Agent[]>(initialAgents);
   const [reports, setReports] = useState<AiReport[]>(initialAiReports);
+  const [iocs, setIocs] = useState<ThreatIntelIOC[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -123,6 +144,9 @@ export function useSocData(): UseSocDataResult {
         alertsRes,
         agentsRes,
         reportsRes,
+        iocsRes,
+        hostResourcesRes,
+        attackVectorsRes,
       ] = await Promise.all([
         getJson<SocStats>('/api/dashboard/stats', signal),
         getJson<TrafficPoint[]>('/api/dashboard/traffic', signal),
@@ -130,6 +154,9 @@ export function useSocData(): UseSocDataResult {
         getJson<Alert[]>('/api/alerts', signal),
         getJson<Agent[]>('/api/agents', signal),
         getJson<AiReport[]>('/api/reports', signal),
+        getJson<ThreatIntelIOC[]>('/api/iocs', signal),
+        getJson<HostResources>('/api/dashboard/host-resources', signal),
+        getJson<AttackVector[]>('/api/dashboard/attack-vectors', signal),
       ]);
 
       setStats(statsRes);
@@ -138,6 +165,9 @@ export function useSocData(): UseSocDataResult {
       setAlerts(Array.isArray(alertsRes) ? alertsRes : []);
       setAgents(Array.isArray(agentsRes) ? agentsRes : []);
       setReports(Array.isArray(reportsRes) ? reportsRes : []);
+      setIocs(Array.isArray(iocsRes) ? iocsRes : []);
+      setHostResources(hostResourcesRes ?? null);
+      setAttackVectors(Array.isArray(attackVectorsRes) ? attackVectorsRes : []);
 
       setBackendHealthy(true);
       setDataSource('live');
@@ -152,10 +182,13 @@ export function useSocData(): UseSocDataResult {
       setDataSource('mock');
       setStats(null);
       setTraffic([]);
+      setHostResources(null);
+      setAttackVectors([]);
       setEvents(initialEvents);
       setAlerts(initialAlerts);
       setAgents(initialAgents);
       setReports(initialAiReports);
+      setIocs([]);
       setError(
         `Backend unreachable at ${BACKEND_URL} — showing demo data (${
           err instanceof Error ? err.message : 'unknown error'
@@ -188,10 +221,14 @@ export function useSocData(): UseSocDataResult {
     dataSource,
     stats,
     traffic,
+    hostResources,
+    attackVectors,
     events,
     alerts,
     agents,
     reports,
+    iocs,
+    setIocs,
     refresh: load,
   };
 }

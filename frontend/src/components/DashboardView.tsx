@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SecurityEvent, Alert, Agent } from '../data/mockData';
-import type { SocStats, TrafficPoint, DataSource } from '../hooks/useSocData';
+import type { SocStats, TrafficPoint, DataSource, HostResources, AttackVector } from '../hooks/useSocData';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Shield, AlertTriangle, Cpu, Users, ArrowUpRight, TrendingUp } from 'lucide-react';
 
@@ -10,6 +10,8 @@ interface DashboardViewProps {
   agents: Agent[];
   stats: SocStats | null;
   traffic: TrafficPoint[];
+  hostResources: HostResources | null;
+  attackVectors: AttackVector[];
   dataSource: DataSource;
   setView: (view: string) => void;
 }
@@ -30,17 +32,18 @@ const MOCK_TRAFFIC = [
 const toPercent = (value: number): number =>
   Math.round(value > 0 && value <= 1 ? value * 100 : value);
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, agents, stats, traffic, dataSource, setView }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, agents, stats, traffic, hostResources, attackVectors, dataSource, setView }) => {
   // Prefer authoritative backend aggregates; fall back to what we can derive locally.
   const totalEvents = stats ? stats.total_events : events.length;
   const criticalAlerts = stats ? stats.critical_alerts : alerts.filter(a => a.severity === 'Critical').length;
   const onlineAgents = stats ? stats.agents_online : agents.filter(a => a.status === 'Online').length;
   const totalAgentsCount = stats ? stats.agents_online + stats.agents_offline : agents.length;
 
-  // SIEM Server Resources (Based on VM rayane-virtual-machine)
-  const rayaneVM = agents.find(a => a.name === 'rayane-virtual-machine') || { cpu_usage: 68, ram_usage: 74 };
-  const cpuUsage = rayaneVM.cpu_usage;
-  const ramUsage = rayaneVM.ram_usage;
+  // SIEM host resources: real live CPU/RAM of the machine running this Flask
+  // backend (GET /api/dashboard/host-resources, via psutil). No data until
+  // the backend responds — never fall back to a hardcoded placeholder.
+  const cpuUsage = hostResources?.cpu_usage ?? null;
+  const ramUsage = hostResources?.ram_usage ?? null;
 
   // Threat Index: use the backend value when present, otherwise a local heuristic.
   const heuristicThreatIndex = Math.min(100, 35 + (criticalAlerts * 15) + (alerts.filter(a => a.severity === 'High').length * 8));
@@ -62,14 +65,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
       : [];
   const trafficEmpty = trafficData.length === 0;
 
-  // TODO(nezha): no backend endpoint for attack-vector breakdown yet — hardcoded.
-  // Needs something like GET /api/dashboard/attack-vectors -> [{ name, value }].
-  const pieData = [
-    { name: 'SQL Injection', value: 35, color: '#ef4444' }, // Red
-    { name: 'Brute Force SSH', value: 30, color: '#f59e0b' }, // Amber
-    { name: 'Port Scan', value: 20, color: '#06b6d4' }, // Cyan
-    { name: 'DDoS / Floods', value: 15, color: '#8b5cf6' }, // Purple
-  ];
+  // Real category breakdown from the last 24h of events (GET /api/dashboard/attack-vectors).
+  // Empty is a valid state — same 24h window as Traffic Analysis, so both panels
+  // agree: idle pipeline -> empty; live pipeline -> populated automatically.
+  const PIE_COLORS = ['#ef4444', '#f59e0b', '#06b6d4', '#8b5cf6', '#10b981', '#ec4899'];
+  const pieData = attackVectors.map((v, i) => ({
+    name: v.name,
+    value: v.value,
+    color: PIE_COLORS[i % PIE_COLORS.length],
+  }));
+  const pieEmpty = pieData.length === 0;
 
   // Helper for gauge colors
   const getThreatColor = (val: number) => {
@@ -171,27 +176,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
         {/* Server Resources Card */}
         <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 500 }}>VM Resources</span>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Host Resources</span>
             <Cpu size={16} style={{ color: 'var(--purple)' }} />
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>CPU Usage</span>
-              <span style={{ fontWeight: 600 }}>{cpuUsage.toFixed(1)}%</span>
+              <span style={{ fontWeight: 600 }}>{cpuUsage !== null ? `${cpuUsage.toFixed(1)}%` : '—'}</span>
             </div>
             <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${cpuUsage}%`, background: 'var(--purple)', borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
+              <div style={{ height: '100%', width: `${cpuUsage ?? 0}%`, background: 'var(--purple)', borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
               <span style={{ color: 'var(--text-secondary)' }}>RAM Usage</span>
-              <span style={{ fontWeight: 600 }}>{ramUsage.toFixed(1)}%</span>
+              <span style={{ fontWeight: 600 }}>{ramUsage !== null ? `${ramUsage.toFixed(1)}%` : '—'}</span>
             </div>
             <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${ramUsage}%`, background: 'var(--cyan)', borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
+              <div style={{ height: '100%', width: `${ramUsage ?? 0}%`, background: 'var(--cyan)', borderRadius: '3px', transition: 'width 1s ease-in-out' }}></div>
             </div>
           </div>
         </div>
@@ -386,6 +391,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '10px' }}>Vector Attack Distribution</h3>
           
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '220px' }}>
+            {pieEmpty ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center' }}>
+                No categorized events in the last 24 hours.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -418,11 +428,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ events, alerts, ag
                 />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </div>
           
-          <div className="glass-panel" style={{ padding: '10px', marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.2)' }}>
-            <strong>Indicateur SOC :</strong> Les tentatives d'injection SQL dominent ce cycle réseau. Assurez-vous que les pare-feu applicatifs (WAF) bloquent les signatures associées.
-          </div>
+          {!pieEmpty && (
+            <div className="glass-panel" style={{ padding: '10px', marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.2)' }}>
+              <strong>Indicateur SOC :</strong> "{pieData[0].name}" domine ce cycle réseau ({pieData[0].value} événement{pieData[0].value > 1 ? 's' : ''} sur les dernières 24h).
+            </div>
+          )}
         </div>
 
       </div>

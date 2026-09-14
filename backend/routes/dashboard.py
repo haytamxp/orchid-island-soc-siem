@@ -2,6 +2,7 @@
 dashboard.py — Dashboard aggregate stats routes.
 """
 from flask import Blueprint, jsonify
+import psutil
 
 from backend.services.db import query_one, query_all
 
@@ -48,11 +49,46 @@ def dashboard_traffic():
         SELECT
             DATE_FORMAT(timestamp, '%H:00') AS hour,
             COUNT(*) AS total,
-            CAST(SUM(CASE WHEN action_taken IN ('Dropped','Blocked','Killed') THEN 1 ELSE 0 END) AS UNSIGNED) AS blocked,
+            CAST(SUM(CASE WHEN action_taken IN ('Dropped','Blocked','Killed','detected') THEN 1 ELSE 0 END) AS UNSIGNED) AS blocked,
             CAST(SUM(CASE WHEN action_taken IN ('Allowed','Logged') THEN 1 ELSE 0 END) AS UNSIGNED) AS allowed
         FROM events
         WHERE timestamp >= NOW() - INTERVAL 24 HOUR
         GROUP BY DATE_FORMAT(timestamp, '%H:00')
         ORDER BY hour
+    """)
+    return jsonify(rows), 200
+
+
+@dashboard_bp.route("/host-resources", methods=["GET"])
+def dashboard_host_resources():
+    """Live CPU/RAM usage of the machine this Flask process is running on.
+
+    Reads real system telemetry via psutil — this machine IS the SIEM's
+    host, so this reflects the actual box running Suricata/Wazuh/Zeek,
+    not a placeholder or a specific agent lookup.
+    """
+    cpu_usage = psutil.cpu_percent(interval=0.5)
+    ram_usage = psutil.virtual_memory().percent
+
+    return jsonify({
+        "cpu_usage": cpu_usage,
+        "ram_usage": ram_usage,
+    }), 200
+
+
+@dashboard_bp.route("/attack-vectors", methods=["GET"])
+def dashboard_attack_vectors():
+    """Real breakdown of event categories in the last 24h, for the dashboard pie chart.
+
+    Same 24h window as /traffic, so both panels tell a consistent story:
+    empty when the pipeline's been idle, populated once real alerts flow in.
+    """
+    rows = query_all("""
+        SELECT category AS name, COUNT(*) AS value
+        FROM events
+        WHERE timestamp >= NOW() - INTERVAL 24 HOUR
+        GROUP BY category
+        ORDER BY value DESC
+        LIMIT 6
     """)
     return jsonify(rows), 200

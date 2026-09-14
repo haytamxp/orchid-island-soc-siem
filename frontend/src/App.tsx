@@ -164,10 +164,14 @@ export const App: React.FC = () => {
     dataSource,
     stats,
     traffic,
+    hostResources,
+    attackVectors,
     events,
     alerts,
     agents,
     reports,
+    iocs,
+    setIocs,
     refresh,
   } = useSocData();
 
@@ -380,6 +384,12 @@ export const App: React.FC = () => {
             traffic={
               traffic
             }
+            hostResources={
+              hostResources
+            }
+            attackVectors={
+              attackVectors
+            }
             dataSource={
               dataSource
             }
@@ -466,10 +476,8 @@ export const App: React.FC = () => {
       case 'Threat Intelligence':
         return (
           <ThreatIntelView
-            iocs={[]}
-            setIocs={() =>
-              undefined
-            }
+            iocs={iocs}
+            setIocs={setIocs}
           />
         );
 
@@ -559,6 +567,12 @@ export const App: React.FC = () => {
             }
             traffic={
               traffic
+            }
+            hostResources={
+              hostResources
+            }
+            attackVectors={
+              attackVectors
             }
             dataSource={
               dataSource
