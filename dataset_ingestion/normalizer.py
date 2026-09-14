@@ -1,5 +1,11 @@
 ﻿"""
 UNSW-NB15 value normalization.
+
+Supports:
+- decimal integers
+- hexadecimal integers such as 0xc0a8
+- decimal floats
+- categorical values
 """
 
 from __future__ import annotations
@@ -73,7 +79,33 @@ def normalize_integer(
         return None
 
     try:
+        lowered = cleaned.lower()
+
+        if lowered.startswith((
+            "0x",
+            "+0x",
+            "-0x",
+        )):
+            sign = -1 if lowered.startswith(
+                "-0x"
+            ) else 1
+
+            hexadecimal = (
+                lowered[3:]
+                if lowered.startswith((
+                    "+0x",
+                    "-0x",
+                ))
+                else lowered[2:]
+            )
+
+            return sign * int(
+                hexadecimal,
+                16,
+            )
+
         numeric = float(cleaned)
+
     except (TypeError, ValueError):
         raise ValueError(
             f"invalid integer value: {value!r}"
