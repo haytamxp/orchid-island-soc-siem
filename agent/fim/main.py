@@ -1,99 +1,132 @@
 """
-Entry point for the real-time FIM agent.
-
-Run:
-
-    python -m agent.fim.main
+Entry point for the Windows FIM agent.
 """
 
 from __future__ import annotations
 
 import logging
+import signal
 import sys
+import time
 
-from agent.fim.baseline import BaselineCache
-from agent.fim.config import FIMConfig
+from agent.fim.config import load_config
 from agent.fim.reporter import FIMReporter
 from agent.fim.watcher import FIMWatcher
 
 
-def configure_logging() -> None:
-    """
-    Configure console logging suitable for an endpoint agent.
-    """
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s "
+        "%(levelname)s "
+        "%(name)s "
+        "%(message)s"
+    ),
+)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format=(
-            "%(asctime)s "
-            "%(levelname)s "
-            "[%(name)s] "
-            "%(message)s"
-        ),
-    )
+
+logger = logging.getLogger(
+    "orchid.fim"
+)
 
 
 def main() -> int:
-    configure_logging()
+    config = load_config()
 
-    logger = logging.getLogger("fim.main")
+    logger.info(
+        "Starting FIM agent: %s",
+        config.agent_id,
+    )
+
+    logger.info(
+        "Hostname: %s",
+        config.hostname,
+    )
+
+    logger.info(
+        "Server: %s",
+        config.server_url,
+    )
+
+    logger.info(
+        "Paths: %s",
+        ", ".join(config.paths),
+    )
+
+    reporter = FIMReporter(
+        config
+    )
+
+    watcher = FIMWatcher(
+        config,
+        reporter,
+    )
+
+    stopping = False
+
+    def stop_handler(
+        signum,
+        frame,
+    ):
+        nonlocal stopping
+
+        if stopping:
+            return
+
+        stopping = True
+
+        logger.info(
+            "Stopping FIM agent..."
+        )
+
+        watcher.stop()
+
+    signal.signal(
+        signal.SIGINT,
+        stop_handler,
+    )
+
+    if hasattr(
+        signal,
+        "SIGTERM",
+    ):
+        signal.signal(
+            signal.SIGTERM,
+            stop_handler,
+        )
 
     try:
-        config = FIMConfig.from_environment()
+        watcher.start()
 
-        if not config.monitored_paths:
-            logger.error(
-                "No FIM paths configured. "
-                "Set FIM_PATHS using ';' as separator."
-            )
-            return 2
+        logger.info(
+            "FIM agent is monitoring."
+        )
 
-        baseline_cache = BaselineCache(
-            server_url=config.server_url,
-            hostname=config.hostname,
-            timeout=config.request_timeout_seconds,
+        while not stopping:
+            time.sleep(1)
+
+    except KeyboardInterrupt:
+        stop_handler(
+            signal.SIGINT,
+            None,
+        )
+
+    except Exception:
+        logger.exception(
+            "FIM agent stopped because of an error."
         )
 
         try:
-            baseline_cache.load()
-        except Exception as exc:
-            logger.error(
-                "Unable to load FIM baselines: %s",
-                exc,
-            )
-            return 3
+            watcher.stop()
+        except Exception:
+            pass
 
-        reporter = FIMReporter(
-            server_url=config.server_url,
-            hostname=config.hostname,
-            agent_id=config.agent_id,
-            timeout=config.request_timeout_seconds,
-        )
-
-        watcher = FIMWatcher(
-            paths=config.monitored_paths,
-            baseline_cache=baseline_cache,
-            reporter=reporter,
-            debounce_seconds=config.debounce_seconds,
-        )
-
-        logger.info(
-            "Starting FIM agent '%s' on host '%s'",
-            config.agent_id,
-            config.hostname,
-        )
-
-        watcher.run_forever()
-
-        return 0
-
-    except Exception as exc:
-        logging.getLogger("fim.main").exception(
-            "FIM agent failed: %s",
-            exc,
-        )
         return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(
+        main()
+    )

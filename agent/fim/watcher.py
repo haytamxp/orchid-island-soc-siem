@@ -1,359 +1,435 @@
 """
-Real-time FIM watcher.
-
-Uses watchdog to receive filesystem notifications and then verifies file
-content through SHA-256 before reporting a security event.
+Real-time Windows FIM watcher.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
-from threading import Lock
+from typing import Any
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import (
+    FileSystemEventHandler,
+)
 from watchdog.observers import Observer
 
-from backend.services.fim import severity_for_path
-
-from agent.fim.baseline import BaselineCache
-from agent.fim.hashing import snapshot_file
+from agent.fim.config import FIMConfig
+from agent.fim.hashing import (
+    FileSnapshot,
+    snapshot_file,
+)
 from agent.fim.reporter import FIMReporter
 
 
-LOGGER = logging.getLogger("fim.watcher")
+logger = logging.getLogger(
+    "orchid.fim.watcher"
+)
 
 
-class _FileEventHandler(FileSystemEventHandler):
+class FIMEventHandler(
+    FileSystemEventHandler
+):
     """
-    Converts watchdog events into FIM events.
+    Convert filesystem events into FIM telemetry.
     """
 
     def __init__(
         self,
-        watcher: "FIMWatcher",
+        config: FIMConfig,
+        reporter: FIMReporter,
+        baseline_map: dict[str, dict[str, Any]],
     ) -> None:
         super().__init__()
 
-        self.watcher = watcher
-
-    def on_modified(self, event) -> None:
-        if not event.is_directory:
-            self.watcher.handle_modified(event.src_path)
-
-    def on_created(self, event) -> None:
-        if not event.is_directory:
-            self.watcher.handle_created(event.src_path)
-
-    def on_deleted(self, event) -> None:
-        if not event.is_directory:
-            self.watcher.handle_deleted(event.src_path)
-
-    def on_moved(self, event) -> None:
-        if not event.is_directory:
-            self.watcher.handle_deleted(event.src_path)
-            self.watcher.handle_created(event.dest_path)
-
-
-class FIMWatcher:
-    """
-    Watches configured files/directories and sends verified events.
-    """
-
-    def __init__(
-        self,
-        paths: tuple[str, ...],
-        baseline_cache: BaselineCache,
-        reporter: FIMReporter,
-        debounce_seconds: float = 1.0,
-    ) -> None:
-        self.paths = tuple(
-            str(Path(path).expanduser().resolve())
-            for path in paths
-        )
-
-        self.baseline_cache = baseline_cache
+        self.config = config
         self.reporter = reporter
-        self.debounce_seconds = debounce_seconds
+        self.baseline_map = baseline_map
 
-        self._last_events: dict[tuple[str, str], float] = {}
-        self._event_lock = Lock()
+        self._last_events: dict[
+            tuple[str, str],
+            float,
+        ] = {}
 
-        self.observer = Observer()
+        self._lock = threading.Lock()
 
-    def start(self) -> None:
-        """
-        Start filesystem monitoring.
-        """
-
-        handler = _FileEventHandler(self)
-
-        watched = 0
-
-        for configured_path in self.paths:
-            if os.path.isdir(configured_path):
-                self.observer.schedule(
-                    handler,
-                    configured_path,
-                    recursive=True,
-                )
-
-                watched += 1
-                LOGGER.info(
-                    "Watching directory: %s",
-                    configured_path,
-                )
-
-                continue
-
-            parent = os.path.dirname(configured_path)
-
-            if not parent:
-                continue
-
-            if os.path.isdir(parent):
-                self.observer.schedule(
-                    handler,
-                    parent,
-                    recursive=False,
-                )
-
-                watched += 1
-                LOGGER.info(
-                    "Watching file: %s",
-                    configured_path,
-                )
-            else:
-                LOGGER.warning(
-                    "Parent directory does not exist: %s",
-                    parent,
-                )
-
-        if watched == 0:
-            raise RuntimeError(
-                "No valid FIM paths/directories were found"
-            )
-
-        self.observer.start()
-
-        LOGGER.info(
-            "FIM watcher started with %d watch target(s)",
-            watched,
+    def _normalize(self, path: str) -> str:
+        return os.path.normcase(
+            os.path.abspath(path)
         )
-
-    def stop(self) -> None:
-        """
-        Stop the filesystem observer.
-        """
-
-        self.observer.stop()
-        self.observer.join(timeout=5)
-
-        LOGGER.info("FIM watcher stopped")
-
-    def run_forever(self) -> None:
-        """
-        Start and block until interrupted.
-        """
-
-        self.start()
-
-        try:
-            while self.observer.is_alive():
-                time.sleep(1)
-        except KeyboardInterrupt:
-            LOGGER.info("FIM watcher interrupted")
-        finally:
-            self.stop()
 
     def _is_monitored(self, path: str) -> bool:
-        """
-        Return True when an event path matches one of the configured paths.
-        """
+        return self._normalize(path) in {
+            self._normalize(monitored)
+            for monitored in self.config.paths
+        }
 
-        normalized_path = str(
-            Path(path).expanduser().resolve()
-        )
-
-        for configured in self.paths:
-            if os.path.isdir(configured):
-                try:
-                    common = os.path.commonpath(
-                        [normalized_path, configured]
-                    )
-                except ValueError:
-                    continue
-
-                if common == configured:
-                    return True
-
-            elif normalized_path == configured:
-                return True
-
-        return False
-
-    def _debounced(
+    def _should_process(
         self,
         path: str,
         change_type: str,
     ) -> bool:
-        """
-        Suppress duplicate filesystem events generated by one operation.
-        """
-
-        key = (path, change_type)
         now = time.monotonic()
 
-        with self._event_lock:
+        key = (
+            self._normalize(path),
+            change_type,
+        )
+
+        with self._lock:
             previous = self._last_events.get(key)
 
             if (
                 previous is not None
-                and now - previous < self.debounce_seconds
+                and now - previous
+                < self.config.debounce_seconds
             ):
-                return True
+                return False
 
             self._last_events[key] = now
 
-        return False
+        return True
 
-    def _report(
+    def _baseline_for(
         self,
-        *,
+        path: str,
+    ) -> dict[str, Any] | None:
+        return self.baseline_map.get(
+            self._normalize(path)
+        )
+
+    def _reload_baseline(
+        self,
+        path: str,
+    ) -> dict[str, Any] | None:
+        try:
+            baselines = self.reporter.get_baselines()
+
+            for baseline in baselines:
+                baseline_path = baseline.get(
+                    "file_path"
+                )
+
+                if (
+                    isinstance(baseline_path, str)
+                    and self._normalize(
+                        baseline_path
+                    )
+                    == self._normalize(path)
+                ):
+                    self.baseline_map[
+                        self._normalize(path)
+                    ] = baseline
+
+                    return baseline
+
+        except Exception:
+            logger.exception(
+                "Failed to refresh baseline for %s",
+                path,
+            )
+
+        return None
+
+    def _ensure_baseline(
+        self,
+        path: str,
+    ) -> dict[str, Any] | None:
+        existing = self._baseline_for(path)
+
+        if existing is not None:
+            return existing
+
+        try:
+            snapshot = snapshot_file(path)
+
+            response = (
+                self.reporter.register_baseline(
+                    snapshot
+                )
+            )
+
+            baseline = response.get(
+                "baseline"
+            )
+
+            if isinstance(baseline, dict):
+                self.baseline_map[
+                    self._normalize(path)
+                ] = baseline
+
+                logger.info(
+                    "Registered baseline: %s",
+                    path,
+                )
+
+                return baseline
+
+        except Exception:
+            logger.exception(
+                "Failed to register baseline: %s",
+                path,
+            )
+
+        return None
+
+    def handle_path(
+        self,
         path: str,
         change_type: str,
-        old_hash: str | None,
-        new_hash: str | None,
-        old_size: int | None,
-        new_size: int | None,
     ) -> None:
-        severity = severity_for_path(
-            path,
-            change_type,
+        normalized_path = self._normalize(
+            path
         )
 
-        self.reporter.report(
-            file_path=path,
-            change_type=change_type,
-            old_hash=old_hash,
-            new_hash=new_hash,
-            old_size=old_size,
-            new_size=new_size,
-            severity=severity,
-            details=(
-                f"Real-time FIM event detected: "
-                f"{change_type}"
-            ),
-        )
-
-    def handle_modified(self, path: str) -> None:
         if not self._is_monitored(path):
             return
 
-        if self._debounced(path, "modified"):
+        if not self._should_process(
+            path,
+            change_type,
+        ):
             return
 
-        baseline = self.baseline_cache.get(
-            str(Path(path).expanduser().resolve())
+        baseline = (
+            self._baseline_for(path)
+            or self._reload_baseline(path)
         )
 
         if baseline is None:
-            LOGGER.debug(
-                "Ignoring modification without baseline: %s",
+            baseline = self._ensure_baseline(path)
+
+        if baseline is None:
+            logger.error(
+                "Ignoring event because no trusted baseline exists: %s",
                 path,
             )
             return
 
-        current = snapshot_file(path)
-
-        if current is None:
-            return
-
-        if current.sha256 == baseline.sha256:
-            return
-
-        LOGGER.warning(
-            "FIM modification detected: %s",
-            path,
+        old_hash = baseline.get(
+            "sha256"
         )
 
-        self._report(
-            path=current.path,
-            change_type="modified",
-            old_hash=baseline.sha256,
-            new_hash=current.sha256,
-            old_size=baseline.file_size,
-            new_size=current.size,
+        old_size = baseline.get(
+            "file_size"
         )
 
-    def handle_created(self, path: str) -> None:
-        if not self._is_monitored(path):
-            return
+        snapshot: FileSnapshot | None
 
-        if self._debounced(path, "created"):
-            return
-
-        normalized_path = str(
-            Path(path).expanduser().resolve()
-        )
-
-        if self.baseline_cache.contains(normalized_path):
-            self.handle_modified(normalized_path)
-            return
-
-        current = snapshot_file(normalized_path)
-
-        if current is None:
-            return
-
-        LOGGER.warning(
-            "FIM file creation detected: %s",
-            normalized_path,
-        )
-
-        self._report(
-            path=current.path,
-            change_type="added",
-            old_hash=None,
-            new_hash=current.sha256,
-            old_size=None,
-            new_size=current.size,
-        )
-
-    def handle_deleted(self, path: str) -> None:
-        if not self._is_monitored(path):
-            return
-
-        if self._debounced(path, "deleted"):
-            return
-
-        normalized_path = str(
-            Path(path).expanduser().resolve()
-        )
-
-        baseline = self.baseline_cache.get(
-            normalized_path
-        )
-
-        if baseline is None:
-            LOGGER.debug(
-                "Ignoring deletion without baseline: %s",
-                normalized_path,
+        try:
+            snapshot = snapshot_file(path)
+        except FileNotFoundError:
+            snapshot = None
+        except PermissionError:
+            logger.exception(
+                "Permission denied while reading %s",
+                path,
             )
             return
 
-        LOGGER.warning(
-            "FIM deletion detected: %s",
-            normalized_path,
+        if change_type == "modified":
+            if (
+                snapshot is not None
+                and old_hash == snapshot.sha256
+            ):
+                logger.debug(
+                    "Ignored unchanged event: %s",
+                    path,
+                )
+                return
+
+        details = (
+            "collector=watchdog; "
+            f"hostname={self.config.hostname}; "
+            f"agent_id={self.config.agent_id}; "
+            "actor/process attribution is not "
+            "claimed without Windows audit telemetry"
         )
 
-        self._report(
-            path=normalized_path,
-            change_type="deleted",
-            old_hash=baseline.sha256,
-            new_hash=None,
-            old_size=baseline.file_size,
-            new_size=None,
+        try:
+            response = self.reporter.report_event(
+                snapshot=snapshot,
+                old_hash=old_hash,
+                old_size=old_size,
+                file_path=normalized_path,
+                change_type=change_type,
+                details=details,
+            )
+
+            logger.info(
+                "FIM event stored: path=%s type=%s response=%s",
+                path,
+                change_type,
+                response,
+            )
+
+        except Exception:
+            logger.exception(
+                "Failed to report FIM event: %s",
+                path,
+            )
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+
+        self.handle_path(
+            event.src_path,
+            "modified",
+        )
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+
+        self.handle_path(
+            event.src_path,
+            "added",
+        )
+
+    def on_deleted(self, event):
+        if event.is_directory:
+            return
+
+        self.handle_path(
+            event.src_path,
+            "deleted",
+        )
+
+
+class FIMWatcher:
+    """Manage the watchdog observer."""
+
+    def __init__(
+        self,
+        config: FIMConfig,
+        reporter: FIMReporter,
+    ) -> None:
+        self.config = config
+        self.reporter = reporter
+
+        self.observer = Observer()
+
+        self.baseline_map: dict[
+            str,
+            dict[str, Any],
+        ] = {}
+
+    def _load_existing_baselines(
+        self,
+    ) -> None:
+        existing = self.reporter.get_baselines()
+
+        for baseline in existing:
+            path = baseline.get(
+                "file_path"
+            )
+
+            if isinstance(path, str):
+                self.baseline_map[
+                    os.path.normcase(
+                        os.path.abspath(path)
+                    )
+                ] = baseline
+
+    def register_missing_baselines(
+        self,
+    ) -> None:
+        for path in self.config.paths:
+            if not os.path.isfile(path):
+                logger.warning(
+                    "Configured FIM path does not exist: %s",
+                    path,
+                )
+                continue
+
+            normalized = os.path.normcase(
+                os.path.abspath(path)
+            )
+
+            if normalized in self.baseline_map:
+                logger.info(
+                    "Baseline already exists: %s",
+                    path,
+                )
+                continue
+
+            if not self.config.register_baselines:
+                logger.warning(
+                    "No baseline for %s and automatic registration disabled.",
+                    path,
+                )
+                continue
+
+            snapshot = snapshot_file(path)
+
+            response = (
+                self.reporter.register_baseline(
+                    snapshot
+                )
+            )
+
+            baseline = response.get(
+                "baseline"
+            )
+
+            if isinstance(baseline, dict):
+                self.baseline_map[
+                    normalized
+                ] = baseline
+
+                logger.info(
+                    "Registered baseline: %s",
+                    path,
+                )
+
+    def start(self) -> None:
+        self._load_existing_baselines()
+
+        self.register_missing_baselines()
+
+        handler = FIMEventHandler(
+            config=self.config,
+            reporter=self.reporter,
+            baseline_map=self.baseline_map,
+        )
+
+        watched_directories: set[str] = set()
+
+        for path in self.config.paths:
+            directory = str(
+                Path(path).parent
+            )
+
+            watched_directories.add(
+                directory
+            )
+
+        for directory in watched_directories:
+            if not os.path.isdir(directory):
+                logger.warning(
+                    "Directory does not exist: %s",
+                    directory,
+                )
+                continue
+
+            self.observer.schedule(
+                handler,
+                directory,
+                recursive=False,
+            )
+
+            logger.info(
+                "Watching: %s",
+                directory,
+            )
+
+        self.observer.start()
+
+    def stop(self) -> None:
+        self.observer.stop()
+        self.observer.join(
+            timeout=5
         )

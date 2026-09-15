@@ -1,37 +1,31 @@
 """
-File hashing and snapshot helpers for the FIM agent.
+File hashing and local snapshot collection for the FIM agent.
 """
 
 from __future__ import annotations
 
+import getpass
 import hashlib
 import os
-from dataclasses import dataclass
+import stat
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class FileSnapshot:
-    """
-    Point-in-time file state.
-    """
-
     path: str
     sha256: str
     size: int
+    mode: str | None
+    owner_name: str | None
 
 
-def calculate_sha256(
+def sha256_file(
     path: str,
     chunk_size: int = 1024 * 1024,
 ) -> str:
-    """
-    Calculate SHA-256 incrementally.
-
-    Incremental reads prevent large monitored files from being loaded
-    completely into memory.
-    """
+    """Calculate SHA-256 without loading the entire file."""
 
     digest = hashlib.sha256()
 
@@ -47,29 +41,46 @@ def calculate_sha256(
     return digest.hexdigest()
 
 
-def snapshot_file(path: str) -> Optional[FileSnapshot]:
-    """
-    Safely create a snapshot of an existing regular file.
-
-    Returns None when the file disappears during the operation.
-    """
+def snapshot_file(path: str) -> FileSnapshot:
+    """Capture the current state of a file."""
 
     normalized_path = str(
-        Path(path).expanduser().resolve()
+        Path(path).resolve()
+    )
+
+    if not os.path.isfile(normalized_path):
+        raise FileNotFoundError(
+            normalized_path
+        )
+
+    file_stat = os.stat(
+        normalized_path
     )
 
     try:
-        if not os.path.isfile(normalized_path):
-            return None
-
-        file_size = os.path.getsize(normalized_path)
-        file_hash = calculate_sha256(normalized_path)
-
-        return FileSnapshot(
-            path=normalized_path,
-            sha256=file_hash,
-            size=file_size,
+        mode = stat.filemode(
+            file_stat.st_mode
         )
+    except (OSError, ValueError):
+        mode = None
 
-    except (FileNotFoundError, PermissionError, OSError):
-        return None
+    try:
+        owner_name = getpass.getuser()
+    except Exception:
+        owner_name = None
+
+    return FileSnapshot(
+        path=normalized_path,
+        sha256=sha256_file(
+            normalized_path
+        ),
+        size=file_stat.st_size,
+        mode=mode,
+        owner_name=owner_name,
+    )
+
+
+def snapshot_to_dict(
+    snapshot: FileSnapshot,
+) -> dict:
+    return asdict(snapshot)

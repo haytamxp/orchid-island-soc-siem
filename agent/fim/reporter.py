@@ -1,97 +1,191 @@
 """
-HTTP reporter for the FIM agent.
+HTTP reporter for the Windows FIM agent.
 """
 
 from __future__ import annotations
 
-import logging
-from typing import Optional
+from typing import Any
 
 import requests
 
+from agent.fim.config import FIMConfig
+from agent.fim.hashing import FileSnapshot
 
-LOGGER = logging.getLogger("fim.reporter")
+
+def _normalize_path(path: str) -> str:
+    return path.replace("\\", "/").lower()
+
+
+def _severity_for_path(
+    path: str,
+    change_type: str,
+) -> str:
+    normalized = _normalize_path(path)
+
+    critical_prefixes = (
+        "c:/windows/system32/",
+    )
+
+    high_prefixes = (
+        "c:/windows/system32/config/",
+        "c:/windows/system32/drivers/etc/",
+        "c:/windows/system32/tasks/",
+        "c:/windows/system32/winlogon/",
+        "c:/windows/system32/group policy/",
+    )
+
+    if any(
+        normalized.startswith(prefix)
+        for prefix in critical_prefixes
+    ):
+        return "Critical"
+
+    if any(
+        normalized.startswith(prefix)
+        for prefix in high_prefixes
+    ):
+        return "High"
+
+    if change_type == "deleted":
+        return "High"
+
+    return "Medium"
 
 
 class FIMReporter:
-    """
-    Sends FIM events to the Flask backend.
-    """
+    """Send real FIM telemetry to Flask."""
 
     def __init__(
         self,
-        server_url: str,
-        hostname: str,
-        agent_id: str,
-        timeout: float = 10.0,
+        config: FIMConfig,
     ) -> None:
-        self.server_url = server_url.rstrip("/")
-        self.hostname = hostname
-        self.agent_id = agent_id
-        self.timeout = timeout
+        self.config = config
 
         self.session = requests.Session()
 
-    @property
-    def events_url(self) -> str:
-        return f"{self.server_url}/api/fim/events"
+        self.session.headers.update(
+            {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": (
+                    f"OrchidIsland-FIM/{config.agent_id}"
+                ),
+            }
+        )
 
-    def report(
+    def _post(
         self,
-        *,
+        endpoint: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        url = (
+            f"{self.config.server_url}"
+            f"/api/fim/{endpoint}"
+        )
+
+        response = self.session.post(
+            url,
+            json=payload,
+            timeout=self.config.request_timeout_seconds,
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        if not isinstance(data, dict):
+            raise RuntimeError(
+                f"Unexpected response from {url}"
+            )
+
+        return data
+
+    def register_baseline(
+        self,
+        snapshot: FileSnapshot,
+    ) -> dict[str, Any]:
+        payload = {
+            "hostname": self.config.hostname,
+            "file_path": snapshot.path,
+            "sha256": snapshot.sha256,
+            "file_size": snapshot.size,
+            "mode": snapshot.mode,
+            "owner_name": snapshot.owner_name,
+            "agent_id": self.config.agent_id,
+        }
+
+        return self._post(
+            "baselines",
+            payload,
+        )
+
+    def report_event(
+        self,
+        snapshot: FileSnapshot | None,
+        old_hash: str | None,
+        old_size: int | None,
         file_path: str,
         change_type: str,
-        old_hash: Optional[str],
-        new_hash: Optional[str],
-        old_size: Optional[int],
-        new_size: Optional[int],
-        severity: str,
-        actor: Optional[str] = None,
-        process_name: Optional[str] = None,
-        details: Optional[str] = None,
-    ) -> bool:
-        """
-        Send one FIM event to the backend.
+        details: str,
+    ) -> dict[str, Any]:
+        new_hash = (
+            snapshot.sha256
+            if snapshot is not None
+            else None
+        )
 
-        Returns True on HTTP success, False otherwise.
-        """
+        new_size = (
+            snapshot.size
+            if snapshot is not None
+            else None
+        )
 
         payload = {
-            "hostname": self.hostname,
+            "hostname": self.config.hostname,
             "file_path": file_path,
             "change_type": change_type,
             "old_hash": old_hash,
             "new_hash": new_hash,
             "old_size": old_size,
             "new_size": new_size,
-            "severity": severity,
-            "actor": actor,
-            "process_name": process_name,
-            "agent_id": self.agent_id,
+            "severity": _severity_for_path(
+                file_path,
+                change_type,
+            ),
+            "actor": None,
+            "process_name": None,
+            "agent_id": self.config.agent_id,
             "details": details,
         }
 
-        try:
-            response = self.session.post(
-                self.events_url,
-                json=payload,
-                timeout=self.timeout,
+        return self._post(
+            "events",
+            payload,
+        )
+
+    def get_baselines(
+        self,
+    ) -> list[dict[str, Any]]:
+        url = (
+            f"{self.config.server_url}"
+            "/api/fim/baselines"
+        )
+
+        response = self.session.get(
+            url,
+            params={
+                "hostname": self.config.hostname,
+            },
+            timeout=self.config.request_timeout_seconds,
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        if not isinstance(data, list):
+            raise RuntimeError(
+                "Unexpected baseline response."
             )
 
-            response.raise_for_status()
-
-            LOGGER.info(
-                "FIM event reported: %s [%s]",
-                file_path,
-                change_type,
-            )
-
-            return True
-
-        except requests.RequestException as exc:
-            LOGGER.error(
-                "Failed to report FIM event for %s: %s",
-                file_path,
-                exc,
-            )
-            return False
+        return data
