@@ -1,4 +1,4 @@
-export type FimChangeType =
+﻿export type FimChangeType =
   | 'added'
   | 'modified'
   | 'deleted';

@@ -1,354 +1,412 @@
-import React from 'react';
+﻿import React, {
+  useState,
+} from 'react';
 
 import {
-  AlertCircle,
-  Clock,
-  Cpu,
-  FileText,
-  User,
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  RefreshCw,
+  ShieldAlert,
 } from 'lucide-react';
 
 import type {
   FimEvent,
 } from '../types/fim';
 
-interface FimEventDetailsProps {
-  event: FimEvent;
+import {
+  useFimData,
+} from '../hooks/useFimData';
+
+import {
+  FimEventDetails,
+} from './FimEventDetails';
+
+import {
+  FimBaselines,
+} from './FimBaselines';
+
+import {
+  FimStats,
+} from './FimStats';
+
+interface FimViewProps {
+  /*
+   * Compatibility with App.tsx.
+   * This prop is intentionally not used.
+   * FIM data comes exclusively from the backend.
+   */
+  fimEvents?: FimEvent[];
 }
 
-function formatBytes(
-  bytes: number | null,
+function severityColor(
+  severity: string,
 ): string {
-  if (
-    bytes === null ||
-    bytes === undefined
-  ) {
-    return 'N/A';
+  switch (severity) {
+    case 'Critical':
+      return 'var(--red)';
+    case 'High':
+      return 'var(--orange)';
+    case 'Medium':
+      return 'var(--yellow)';
+    default:
+      return 'var(--text-muted)';
   }
-
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(
-      bytes / 1024
-    ).toFixed(1)} KB`;
-  }
-
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(
-      bytes /
-      (1024 * 1024)
-    ).toFixed(1)} MB`;
-  }
-
-  return `${(
-    bytes /
-    (1024 * 1024 * 1024)
-  ).toFixed(1)} GB`;
 }
 
-export const FimEventDetails: React.FC<
-  FimEventDetailsProps
-> = ({ event }) => {
-  const changed =
-    event.old_hash !==
-      event.new_hash &&
-    event.old_hash !== null;
+export const FimView:
+  React.FC<FimViewProps> = () => {
+    const {
+      filteredEvents,
+      baselines,
+      stats,
+      loading,
+      backendHealthy,
+      error,
+      filters,
+      setFilters,
+      refresh,
+      disableBaseline,
+      enableBaseline,
+    } = useFimData();
 
-  return (
-    <div
-      style={{
-        padding: '18px',
-        background:
-          'rgba(0,0,0,0.22)',
-        borderTop:
-          '1px solid var(--border-primary)',
-      }}
-    >
+    const [
+      expandedId,
+      setExpandedId,
+    ] = useState<number | null>(null);
+
+    return (
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns:
-            'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '14px',
-          marginBottom: '14px',
+          padding: '22px',
         }}
       >
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-            }}
-          >
-            FILE
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '7px',
-              marginTop: '5px',
-              fontFamily:
-                'var(--font-mono)',
-              color:
-                'var(--cyan)',
-              fontSize:
-                '0.78rem',
-              wordBreak:
-                'break-all',
-            }}
-          >
-            <FileText size={14} />
-            {event.file_path}
-          </div>
-        </div>
-
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-            }}
-          >
-            ACTOR
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '7px',
-              marginTop: '5px',
-              alignItems: 'center',
-            }}
-          >
-            <User size={14} />
-
-            {event.actor ||
-              'Unknown'}
-          </div>
-        </div>
-
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-            }}
-          >
-            PROCESS
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '7px',
-              marginTop: '5px',
-              alignItems: 'center',
-              fontFamily:
-                'var(--font-mono)',
-            }}
-          >
-            <Cpu size={14} />
-
-            {event.process_name ||
-              'Unknown'}
-          </div>
-        </div>
-
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-            }}
-          >
-            DETECTED
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '7px',
-              marginTop: '5px',
-              alignItems: 'center',
-            }}
-          >
-            <Clock size={14} />
-            {event.timestamp}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns:
-            '1fr 1fr',
-          gap: '12px',
-        }}
-      >
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-              marginBottom:
-                '5px',
-            }}
-          >
-            OLD SHA-256
-          </div>
-
-          <pre
-            style={{
-              margin: 0,
-              padding: '10px',
-              background:
-                'rgba(0,0,0,0.25)',
-              borderRadius: '6px',
-              fontFamily:
-                'var(--font-mono)',
-              fontSize:
-                '0.68rem',
-              wordBreak:
-                'break-all',
-                whiteSpace:
-                'pre-wrap',
-              color:
-                'var(--text-secondary)',
-            }}
-          >
-            {event.old_hash ||
-              'N/A'}
-          </pre>
-
-          <div
-            style={{
-              marginTop: '5px',
-              fontSize:
-                '0.7rem',
-              color:
-                'var(--text-muted)',
-            }}
-          >
-            Size:{' '}
-            {formatBytes(
-              event.old_size,
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div
-            style={{
-              color:
-                'var(--text-muted)',
-              fontSize:
-                '0.7rem',
-              marginBottom:
-                '5px',
-            }}
-          >
-            NEW SHA-256
-          </div>
-
-          <pre
-            style={{
-              margin: 0,
-              padding: '10px',
-              background:
-                'rgba(0,0,0,0.25)',
-              borderRadius: '6px',
-              fontFamily:
-                'var(--font-mono)',
-              fontSize:
-                '0.68rem',
-              wordBreak:
-                'break-all',
-              whiteSpace:
-                'pre-wrap',
-              color:
-                changed
-                  ? 'var(--red)'
-                  : 'var(--emerald)',
-            }}
-          >
-            {event.new_hash ||
-              'N/A'}
-          </pre>
-
-          <div
-            style={{
-              marginTop: '5px',
-              fontSize:
-                '0.7rem',
-              color:
-                'var(--text-muted)',
-            }}
-          >
-            Size:{' '}
-            {formatBytes(
-              event.new_size,
-            )}
-          </div>
-        </div>
-      </div>
-
-      {changed && (
         <div
           style={{
             display: 'flex',
-            gap: '8px',
-            alignItems:
-              'center',
-            marginTop: '14px',
-            color:
-              'var(--red)',
-            fontSize:
-              '0.75rem',
+            alignItems: 'center',
+            gap: '10px',
+            marginBottom: '6px',
           }}
         >
-          <AlertCircle
-            size={15}
+          <ShieldAlert
+            size={21}
+            color="var(--cyan)"
           />
 
-          SHA-256 mismatch detected
-          against the trusted baseline.
-        </div>
-      )}
+          <h2
+            style={{
+              margin: 0,
+            }}
+          >
+            File Integrity Monitoring
+          </h2>
 
-      {event.details && (
+          <span
+            style={{
+              marginLeft: 'auto',
+              padding: '5px 9px',
+              borderRadius: '999px',
+              fontSize: '0.7rem',
+              border:
+                '1px solid var(--border-primary)',
+              color:
+                backendHealthy
+                  ? 'var(--emerald)'
+                  : 'var(--red)',
+            }}
+          >
+            {backendHealthy
+              ? 'Live backend data'
+              : 'Backend unavailable'}
+          </span>
+        </div>
+
         <div
           style={{
-            marginTop: '14px',
-            padding: '10px',
-            borderRadius: '6px',
-            border:
-              '1px solid rgba(6,182,212,0.15)',
-            background:
-              'rgba(6,182,212,0.04)',
-            color:
-              'var(--text-secondary)',
-            fontSize:
-              '0.75rem',
+            color: 'var(--text-muted)',
+            fontSize: '0.78rem',
+            marginBottom: '18px',
           }}
         >
-          {event.details}
+          Real FIM telemetry from the
+          backend and MariaDB.
         </div>
-      )}
-    </div>
-  );
-};
+
+        {error && (
+          <div
+            style={{
+              marginBottom: '14px',
+              padding: '11px 13px',
+              borderRadius: '7px',
+              border:
+                '1px solid rgba(239,68,68,0.35)',
+              background:
+                'rgba(239,68,68,0.08)',
+              color: 'var(--red)',
+              fontSize: '0.75rem',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <FimStats stats={stats} />
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns:
+              'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '10px',
+            marginTop: '18px',
+          }}
+        >
+          <input
+            value={filters.hostname}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                hostname: event.target.value,
+              }))
+            }
+            placeholder="Hostname"
+          />
+
+          <select
+            value={filters.severity}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                severity: event.target.value,
+              }))
+            }
+          >
+            <option value="">
+              All severities
+            </option>
+            <option value="Critical">
+              Critical
+            </option>
+            <option value="High">
+              High
+            </option>
+            <option value="Medium">
+              Medium
+            </option>
+            <option value="Low">
+              Low
+            </option>
+          </select>
+
+          <select
+            value={filters.change_type}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                change_type: event.target.value,
+              }))
+            }
+          >
+            <option value="">
+              All changes
+            </option>
+            <option value="modified">
+              Modified
+            </option>
+            <option value="added">
+              Added
+            </option>
+            <option value="deleted">
+              Deleted
+            </option>
+          </select>
+
+          <input
+            value={filters.search}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                search: event.target.value,
+              }))
+            }
+            placeholder="Search..."
+          />
+
+          <button
+            type="button"
+            onClick={() => void refresh()}
+          >
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: '18px',
+            border:
+              '1px solid var(--border-primary)',
+            borderRadius: '9px',
+            overflow: 'hidden',
+          }}
+        >
+          {loading ? (
+            <div
+              style={{
+                padding: '30px',
+                textAlign: 'center',
+              }}
+            >
+              Loading real FIM telemetry...
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div
+              style={{
+                padding: '35px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+              }}
+            >
+              No real FIM events match
+              the current filters.
+            </div>
+          ) : (
+            <div
+              style={{
+                overflowX: 'auto',
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse:
+                    'collapse',
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th />
+                    <th>Time</th>
+                    <th>Host</th>
+                    <th>File</th>
+                    <th>Change</th>
+                    <th>Severity</th>
+                    <th>Agent</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filteredEvents.map(
+                    (event) => {
+                      const expanded =
+                        expandedId === event.id;
+
+                      return (
+                        <React.Fragment
+                          key={event.id}
+                        >
+                          <tr
+                            onClick={() =>
+                              setExpandedId(
+                                expanded
+                                  ? null
+                                  : event.id,
+                              )
+                            }
+                          >
+                            <td>
+                              {expanded ? (
+                                <ChevronDown
+                                  size={15}
+                                />
+                              ) : (
+                                <ChevronRight
+                                  size={15}
+                                />
+                              )}
+                            </td>
+
+                            <td>
+                              {event.timestamp}
+                            </td>
+
+                            <td>
+                              {event.hostname}
+                            </td>
+
+                            <td
+                              style={{
+                                fontFamily:
+                                  'var(--font-mono)',
+                                color:
+                                  'var(--cyan)',
+                              }}
+                            >
+                              {event.file_path}
+                            </td>
+
+                            <td>
+                              {event.change_type}
+                            </td>
+
+                            <td
+                              style={{
+                                color:
+                                  severityColor(
+                                    event.severity,
+                                  ),
+                              }}
+                            >
+                              {event.severity}
+                            </td>
+
+                            <td>
+                              {event.agent_id ||
+                                'N/A'}
+                            </td>
+                          </tr>
+
+                          {expanded && (
+                            <tr>
+                              <td colSpan={7}>
+                                <FimEventDetails
+                                  event={event}
+                                />
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    },
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <FimBaselines
+          baselines={baselines}
+          onDisable={disableBaseline}
+          onEnable={enableBaseline}
+        />
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '7px',
+            marginTop: '12px',
+            color: 'var(--text-muted)',
+            fontSize: '0.7rem',
+          }}
+        >
+          <Filter size={13} />
+
+          Empty means no matching real
+          telemetry exists.
+        </div>
+      </div>
+    );
+  };

@@ -1,8 +1,10 @@
-import {
+﻿import {
   useCallback,
   useEffect,
   useMemo,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 
 import type {
@@ -13,20 +15,22 @@ import type {
 } from '../types/fim';
 
 import {
+  disableFimBaseline,
+  enableFimBaseline,
   getFimBaselines,
   getFimEvents,
 } from '../services/fim';
 
-const POLL_INTERVAL_MS = 10000;
+const POLL_INTERVAL_MS = 10_000;
 
 function matchesSearch(
   event: FimEvent,
   search: string,
 ): boolean {
-  const normalizedSearch =
+  const normalized =
     search.trim().toLowerCase();
 
-  if (!normalizedSearch) {
+  if (!normalized) {
     return true;
   }
 
@@ -40,11 +44,8 @@ function matchesSearch(
     event.agent_id ?? '',
   ];
 
-  return values.some(
-    (value) =>
-      value
-        .toLowerCase()
-        .includes(normalizedSearch),
+  return values.some((value) =>
+    value.toLowerCase().includes(normalized),
   );
 }
 
@@ -53,30 +54,20 @@ function calculateStats(
 ): FimStats {
   return {
     total: events.length,
-
     critical: events.filter(
-      (event) =>
-        event.severity === 'Critical',
+      (event) => event.severity === 'Critical',
     ).length,
-
     high: events.filter(
-      (event) =>
-        event.severity === 'High',
+      (event) => event.severity === 'High',
     ).length,
-
     modified: events.filter(
-      (event) =>
-        event.change_type === 'modified',
+      (event) => event.change_type === 'modified',
     ).length,
-
     deleted: events.filter(
-      (event) =>
-        event.change_type === 'deleted',
+      (event) => event.change_type === 'deleted',
     ).length,
-
     added: events.filter(
-      (event) =>
-        event.change_type === 'added',
+      (event) => event.change_type === 'added',
     ).length,
   };
 }
@@ -86,154 +77,129 @@ export interface UseFimDataResult {
   baselines: FimBaseline[];
   filteredEvents: FimEvent[];
   stats: FimStats;
-
   loading: boolean;
   backendHealthy: boolean;
   error: string | null;
-
   filters: FimFilters;
-
-  setFilters: React.Dispatch<
-    React.SetStateAction<FimFilters>
-  >;
-
+  setFilters: Dispatch<SetStateAction<FimFilters>>;
   refresh: () => Promise<void>;
+  disableBaseline: (id: number) => Promise<void>;
+  enableBaseline: (id: number) => Promise<void>;
 }
 
 export function useFimData(): UseFimDataResult {
-  const [events, setEvents] =
-    useState<FimEvent[]>([]);
+  const [events, setEvents] = useState<FimEvent[]>([]);
+  const [baselines, setBaselines] = useState<FimBaseline[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [backendHealthy, setBackendHealthy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [baselines, setBaselines] =
-    useState<FimBaseline[]>([]);
+  const [filters, setFilters] = useState<FimFilters>({
+    hostname: '',
+    severity: '',
+    change_type: '',
+    search: '',
+  });
 
-  const [loading, setLoading] =
-    useState(true);
+  const refresh = useCallback(async () => {
+    setLoading(true);
 
-  const [backendHealthy, setBackendHealthy] =
-    useState(false);
+    try {
+      const [
+        fetchedEvents,
+        fetchedBaselines,
+      ] = await Promise.all([
+        getFimEvents({
+          hostname: filters.hostname || undefined,
+          severity: filters.severity || undefined,
+          change_type: filters.change_type || undefined,
+          limit: 200,
+        }),
+        getFimBaselines(
+          filters.hostname || undefined,
+          true,
+        ),
+      ]);
 
-  const [error, setError] =
-    useState<string | null>(null);
+      setEvents(
+        Array.isArray(fetchedEvents)
+          ? fetchedEvents
+          : [],
+      );
 
-  const [filters, setFilters] =
-    useState<FimFilters>({
-      hostname: '',
-      severity: '',
-      change_type: '',
-      search: '',
-    });
+      setBaselines(
+        Array.isArray(fetchedBaselines)
+          ? fetchedBaselines
+          : [],
+      );
 
-  const refresh = useCallback(
-    async () => {
-      setLoading(true);
+      setBackendHealthy(true);
+      setError(null);
+    } catch (err) {
+      setBackendHealthy(false);
+      setEvents([]);
+      setBaselines([]);
 
-      try {
-        const [
-          fetchedEvents,
-          fetchedBaselines,
-        ] = await Promise.all([
-          getFimEvents({
-            hostname:
-              filters.hostname ||
-              undefined,
-
-            severity:
-              filters.severity ||
-              undefined,
-
-            change_type:
-              filters.change_type ||
-              undefined,
-
-            limit: 200,
-          }),
-
-          getFimBaselines(
-            filters.hostname ||
-              undefined,
-          ),
-        ]);
-
-        setEvents(
-          Array.isArray(
-            fetchedEvents,
-          )
-            ? fetchedEvents
-            : [],
-        );
-
-        setBaselines(
-          Array.isArray(
-            fetchedBaselines,
-          )
-            ? fetchedBaselines
-            : [],
-        );
-
-        setBackendHealthy(true);
-        setError(null);
-      } catch (err) {
-        setBackendHealthy(false);
-
-        setEvents([]);
-        setBaselines([]);
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to retrieve FIM data',
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      filters.hostname,
-      filters.severity,
-      filters.change_type,
-    ],
-  );
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to retrieve FIM data',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    filters.hostname,
+    filters.severity,
+    filters.change_type,
+  ]);
 
   useEffect(() => {
     void refresh();
 
-    const timer =
-      window.setInterval(
-        () => {
-          void refresh();
-        },
-        POLL_INTERVAL_MS,
-      );
+    const timer = window.setInterval(
+      () => {
+        void refresh();
+      },
+      POLL_INTERVAL_MS,
+    );
 
-    return () =>
-      window.clearInterval(
-        timer,
-      );
+    return () => {
+      window.clearInterval(timer);
+    };
   }, [refresh]);
 
-  const filteredEvents =
-    useMemo(() => {
-      return events.filter(
-        (event) =>
-          matchesSearch(
-            event,
-            filters.search,
-          ),
-      );
-    }, [
-      events,
-      filters.search,
-    ]);
-
-  const stats =
-    useMemo(
-      () =>
-        calculateStats(
-          filteredEvents,
+  const filteredEvents = useMemo(
+    () =>
+      events.filter((event) =>
+        matchesSearch(
+          event,
+          filters.search,
         ),
-      [filteredEvents],
-    );
+      ),
+    [events, filters.search],
+  );
+
+  const stats = useMemo(
+    () => calculateStats(filteredEvents),
+    [filteredEvents],
+  );
+
+  const disableBaseline = useCallback(
+    async (id: number) => {
+      await disableFimBaseline(id);
+      await refresh();
+    },
+    [refresh],
+  );
+
+  const enableBaseline = useCallback(
+    async (id: number) => {
+      await enableFimBaseline(id);
+      await refresh();
+    },
+    [refresh],
+  );
 
   return {
     events,
@@ -246,5 +212,7 @@ export function useFimData(): UseFimDataResult {
     filters,
     setFilters,
     refresh,
+    disableBaseline,
+    enableBaseline,
   };
 }

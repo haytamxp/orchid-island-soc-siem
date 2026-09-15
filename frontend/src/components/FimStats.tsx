@@ -1,120 +1,91 @@
-import React from 'react';
-
-import {
-  AlertTriangle,
-  FileWarning,
-  Plus,
-  ShieldAlert,
-  Trash2,
-} from 'lucide-react';
+﻿import React from 'react';
 
 import type {
-  FimStats as FimStatsData,
+  FimStats as FimStatsType,
 } from '../types/fim';
 
-interface FimStatsProps {
-  stats: FimStatsData;
+interface Props {
+  stats: FimStatsType;
 }
 
-export const FimStats: React.FC<
-  FimStatsProps
-> = ({ stats }) => {
-  const cards = [
-    {
-      label: 'Total Changes',
-      value: stats.total,
-      icon: <FileWarning size={18} />,
-      color: 'var(--cyan)',
-    },
-    {
-      label: 'Critical',
-      value: stats.critical,
-      icon: <ShieldAlert size={18} />,
-      color: 'var(--red)',
-    },
-    {
-      label: 'High',
-      value: stats.high,
-      icon: <AlertTriangle size={18} />,
-      color: 'var(--amber)',
-    },
-    {
-      label: 'Modified',
-      value: stats.modified,
-      icon: <FileWarning size={18} />,
-      color: 'var(--amber)',
-    },
-    {
-      label: 'Deleted',
-      value: stats.deleted,
-      icon: <Trash2 size={18} />,
-      color: 'var(--red)',
-    },
-    {
-      label: 'Added',
-      value: stats.added,
-      icon: <Plus size={18} />,
-      color: 'var(--emerald)',
-    },
-  ];
+interface CardProps {
+  label: string;
+  value: number;
+}
 
-  return (
+const Card: React.FC<CardProps> = ({
+  label,
+  value,
+}) => (
+  <div
+    style={{
+      padding: '14px',
+      border: '1px solid var(--border-primary)',
+      borderRadius: '9px',
+      background: 'rgba(255,255,255,0.02)',
+    }}
+  >
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns:
-          'repeat(auto-fit, minmax(150px, 1fr))',
-        gap: '12px',
+        color: 'var(--text-muted)',
+        fontSize: '0.68rem',
+        textTransform: 'uppercase',
       }}
     >
-      {cards.map((card) => (
-        <div
-          key={card.label}
-          className="glass-panel"
-          style={{
-            padding: '16px',
-            minHeight: '100px',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent:
-                'space-between',
-              alignItems: 'center',
-              marginBottom: '14px',
-            }}
-          >
-            <span
-              style={{
-                color:
-                  'var(--text-secondary)',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-              }}
-            >
-              {card.label}
-            </span>
-
-            <span
-              style={{
-                color: card.color,
-              }}
-            >
-              {card.icon}
-            </span>
-          </div>
-
-          <div
-            style={{
-              fontSize: '1.6rem',
-              fontWeight: 800,
-            }}
-          >
-            {card.value}
-          </div>
-        </div>
-      ))}
+      {label}
     </div>
-  );
-};
+
+    <div
+      style={{
+        marginTop: '5px',
+        fontSize: '1.4rem',
+        fontWeight: 700,
+      }}
+    >
+      {value}
+    </div>
+  </div>
+);
+
+export const FimStats: React.FC<Props> = ({
+  stats,
+}) => (
+  <div
+    style={{
+      display: 'grid',
+      gridTemplateColumns:
+        'repeat(auto-fit, minmax(130px, 1fr))',
+      gap: '10px',
+    }}
+  >
+    <Card
+      label="Total events"
+      value={stats.total}
+    />
+
+    <Card
+      label="Critical"
+      value={stats.critical}
+    />
+
+    <Card
+      label="High"
+      value={stats.high}
+    />
+
+    <Card
+      label="Modified"
+      value={stats.modified}
+    />
+
+    <Card
+      label="Deleted"
+      value={stats.deleted}
+    />
+
+    <Card
+      label="Added"
+      value={stats.added}
+    />
+  </div>
+);
