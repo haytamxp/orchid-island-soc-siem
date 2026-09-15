@@ -348,3 +348,47 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r backend\requirements.txt
 ```
+# Orchid Island SOC/SIEM
+
+## File Integrity Monitoring (FIM)
+
+File Integrity Monitoring detects unauthorized modifications, creations, and
+deletions of monitored files.
+
+The FIM implementation uses cryptographic hashes, primarily SHA-256, to compare
+the current state of a file against a trusted baseline.
+
+---
+
+## FIM Architecture
+
+```text
+              Endpoint / Server
+                     |
+                     v
+             +---------------+
+             | FIM Agent     |
+             |               |
+             | File watcher  |
+             | SHA-256       |
+             +-------+-------+
+                     |
+                     | FIM event
+                     v
+             +---------------+
+             | Flask API     |
+             | /api/fim/*    |
+             +-------+-------+
+                     |
+                     v
+             +---------------+
+             | MySQL         |
+             |               |
+             | baselines     |
+             | fim_events    |
+             +-------+-------+
+                     |
+                     v
+             +---------------+
+             | React SOC UI  |
+             +---------------+
