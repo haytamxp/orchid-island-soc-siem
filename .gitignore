@@ -88,3 +88,12 @@ captures/
 pcaps/
 production-logs/
 datasets/private/
+# Large ML datasets
+database/UNSW-NB15_*.csv
+
+# Generated UNSW processed datasets
+data/processed/unsw_nb15/
+
+# Local ML databases
+data/processed/unsw_nb15/*.sqlite
+data/processed/unsw_nb15/*.sqlite3

@@ -1,0 +1,17 @@
+severity,source,category,description,src_ip,dst_ip,dst_port,username,hostname,url,http_method,http_status,label
+low,web,web_access,Normal property listing request,192.168.1.20,10.0.0.10,443,alice,web01,/properties,GET,200,0
+low,web,web_access,Normal homepage request,192.168.1.21,10.0.0.10,443,bob,web01,/,GET,200,0
+medium,wazuh,authentication,Successful user authentication,192.168.1.30,10.0.0.20,443,alice,web01,,POST,,0
+low,cloudflare,web_access,Normal cached request,192.168.1.40,10.0.0.10,443,,web01,/fr/properties,GET,200,0
+low,wazuh,authentication,Normal login event,192.168.1.50,10.0.0.20,443,charlie,web01,,POST,,0
+medium,web,web_error,Application returned HTTP 404,192.168.1.60,10.0.0.10,443,,web01,/missing,GET,404,0
+high,suricata,scanning,Port scan detected,192.168.1.100,10.0.0.10,445,,web01,,,,1
+high,web,web_attack,SQL injection attempt detected,192.168.1.101,10.0.0.10,443,,web01,/properties?id=SQL_INJECTION,GET,500,1
+high,web,web_attack,Cross-site scripting attack detected,192.168.1.102,10.0.0.10,443,,web01,/search?q=XSS,GET,500,1
+critical,wazuh,credential_attack,Credential dumping detected,192.168.1.103,10.0.0.20,445,admin,web01,,,,1
+high,wazuh,authentication,Multiple failed login attempts brute force,192.168.1.104,10.0.0.20,443,admin,web01,,POST,,1
+high,suricata,scanning,Reconnaissance and port scan activity,192.168.1.105,10.0.0.10,3389,,web01,,,,1
+critical,web,web_attack,Path traversal attack detected,192.168.1.106,10.0.0.10,443,,web01,/../../etc/passwd,GET,403,1
+critical,wazuh,malware,Malware execution detected on server,192.168.1.107,10.0.0.20,445,admin,web01,,,,1
+high,web,web_attack,Command injection attempt detected,192.168.1.108,10.0.0.10,443,,web01,/api?cmd=whoami,GET,500,1
+critical,wazuh,data_exfiltration,Suspicious large data transfer detected,192.168.1.109,10.0.0.20,443,admin,web01,,,,1
